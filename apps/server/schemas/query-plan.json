@@ -1,0 +1,14 @@
+{
+  "type": "object", "additionalProperties": false,
+  "properties": {
+    "supported": {"type":"boolean"}, "explanation":{"type":"string"},
+    "logic":{"type":"string","enum":["all","any"]},
+    "groups":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"logic":{"type":"string","enum":["all","any"]},"filters":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"field":{"type":"string"},"op":{"type":"string","enum":["eq","ne","gt","gte","lt","lte","contains","not_contains","is_null","not_null","in"]},"value":{"type":["string","number","boolean","null"]}},"required":["field","op","value"]}}},"required":["logic","filters"]}},
+    "select":{"type":"array","items":{"type":"string"}},
+    "sort":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"field":{"type":"string"},"direction":{"type":"string","enum":["asc","desc"]}},"required":["field","direction"]}},
+    "limit":{"type":"integer"}, "offset":{"type":"integer"},
+    "aggregate":{"type":["string","null"],"enum":[null,"count","sum","avg","min","max","group_count"]},
+    "aggregateField":{"type":["string","null"]}, "groupBy":{"type":["string","null"]}
+  },
+  "required":["supported","explanation","logic","groups","select","sort","limit","offset","aggregate","aggregateField","groupBy"]
+}

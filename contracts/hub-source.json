@@ -1,0 +1,11 @@
+{
+  "name": "Oxen Hub AI and fine-tuning API",
+  "version": "v281",
+  "url": "https://hub.oxen.ai/api/_spec/oxen_hub_api.json",
+  "sha256": "195983b1d4bf6f69b4d2e5827177c275924c7682fc9e5e7eb00af87dd82ece95",
+  "snapshotDate": "2026-11-07",
+  "discovery": "https://github.com/Oxen-AI/docs/blob/be5dfa1717e78dd3a390e8be617c408a764cbdec/docs.json",
+  "apiHost": "https://hub.oxen.ai",
+  "uiLogin": "https://www.oxen.ai/login",
+  "availability": "Published contract only. Requires a hosted or private Oxen Hub deployment and bearer credentials; it is not served by the local open-source oxen-server. No generation, fine-tune, paid or account-modifying request was executed."
+}

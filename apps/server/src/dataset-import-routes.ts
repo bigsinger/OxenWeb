@@ -1,0 +1,31 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import type { Provider, RepoKey } from './provider.js';
+import type { RepositoryAccessService } from './repository-access.js';
+import type { DatasetService } from './dataset.js';
+import type { DatasetDraftService } from './dataset-drafts.js';
+import type { ZipImportService } from './zip-import.js';
+import { ApiError } from './errors.js';
+import { requestIdentity } from './auth.js';
+import { safeRef, safeSegment } from './safety.js';
+import { datasetHash } from './dataset-storage.js';
+
+const mapping = z.object({ mode: z.enum(['tables','directories','archives','release']), paths: z.array(z.string().max(1024)).min(1).max(10_000), idField: z.string().min(1).max(120).optional(), attachmentFields: z.array(z.string().min(1).max(120)).max(30).optional() }).strict();
+const target = z.object({ ref: z.string().transform(safeRef), expectedCommit: z.string().transform(safeRef) }).strict();
+const planned = target.extend({ mapping, fingerprint: z.string().regex(/^[a-f0-9]{64}$/) });
+const key = (input: unknown): RepoKey => z.object({ namespace:z.string().transform(safeSegment), repo:z.string().transform(safeSegment) }).parse(input);
+export function registerDatasetImportRoutes(app: FastifyInstance, options: { provider: Provider; datasets: DatasetService; zipImports: ZipImportService; access: RepositoryAccessService; drafts?: DatasetDraftService }) {
+  const base='/api/repos/:namespace/:repo/dataset', {datasets,zipImports,access}=options;
+  app.get(base+'/setup',async request=>{const repository=key(request.params),identity=requestIdentity(request);await access.require(repository,identity,'read');const {ref}=z.object({ref:z.string().transform(safeRef).default('main')}).strict().parse(request.query),state=await datasets.setupState(repository,ref);let allowed=false;try{await access.requireCapability(repository,identity,'data.edit');await access.requireCapability(repository,identity,'tasks.manage');allowed=identity.kind!=='guest';}catch{}return {...state,canInitialize:state.canInitialize&&allowed};});
+  app.post(base+'/initialize-empty',async request=>{const repository=key(request.params),identity=requestIdentity(request),input=target.parse(request.body);await access.requireCapability(repository,identity,'data.edit');await access.requireCapability(repository,identity,'tasks.manage');const setup=await datasets.setupState(repository,input.ref);if(!setup.canInitialize)throw new ApiError(409,'DATASET_SETUP_REQUIRED','已有数据入口，请使用配置或追加导入；不能覆盖初始化。');const snapshot=await datasets.initialize(repository,identity,{...input,rows:[],message:'Initialize empty dataset'});return {commitId:snapshot.commitId,totalRows:0};});
+  app.post(base+'/import/inspect',{bodyLimit:68*1024*1024},async request=>{const repository=key(request.params),identity=requestIdentity(request);await access.requireCapability(repository,identity,'data.edit');let content:Buffer|undefined,filename='';for await(const part of request.parts({limits:{fileSize:64*1024*1024,files:1,fields:0}})){if(part.type!=='file')continue;if(content)throw new ApiError(400,'IMPORT_FILE_COUNT','一次选择一个数据文件。');filename=part.filename;content=await part.toBuffer();if(part.file.truncated)throw new ApiError(413,'IMPORT_SIZE_LIMIT','数据文件不能超过64MiB。');}if(!content)throw new ApiError(400,'IMPORT_FILE_REQUIRED','请选择数据文件。');return zipImports.inspectData(content,filename,identity);});
+  async function preflight(repository:RepoKey,identity:ReturnType<typeof requestIdentity>,id:string,input:z.infer<typeof planned>){
+    await access.requireCapability(repository,identity,'data.edit');if(options.drafts){const own=await options.drafts.read(repository,identity,input.ref);if(own.draft||own.summary)throw new ApiError(409,'IMPORT_PRIVATE_DRAFT_PRESENT','当前分支有有效或待处理的本机草稿。请先提交、明确放弃，或选择其他分支导入；不会自动丢弃草稿。');}
+    const state=await datasets.setupState(repository,input.ref);if(!state.configured&&!state.canInitialize)throw new ApiError(409,'DATASET_SETUP_REQUIRED','项目有多个既有数据入口，请先由负责人配置规范入口。');if(state.commitId!==input.expectedCommit)throw new ApiError(409,'DATASET_VERSION_CONFLICT','目标分支已变化，请重新预览。');
+    const prepared=zipImports.preparedInput(id,identity,input.mapping,input.fingerprint);if(!state.configured){await access.requireCapability(repository,identity,'tasks.manage');if(prepared.labels?.columns.length)await access.requireCapability(repository,identity,'schema.manage');}
+    const initialize={...prepared,ref:input.ref,expectedCommit:input.expectedCommit},projected=state.configured?await datasets.appendImport(repository,identity,initialize,true):await datasets.initialize(repository,identity,initialize,true);
+    return {initialize,configured:state.configured,rowCount:prepared.rows.length,totalRows:projected.totalRows,columns:projected.columns,previewFingerprint:datasetHash({fingerprint:input.fingerprint,commit:input.expectedCommit,mode:state.configured?'append':'initialize'})};
+  }
+  app.post(base+'/import/:id/preview',async request=>{const repository=key(request.params),identity=requestIdentity(request),id=z.object({id:z.string().uuid()}).passthrough().parse(request.params).id,input=planned.parse(request.body);const {initialize:_input,...result}=await preflight(repository,identity,id,input);return {...result,warnings:result.configured?['追加导入会保留原样本和标注；外部标签仅作为来源文件保留，不自动成为本机人工意见。']:[]};});
+  app.post(base+'/import/:id/commit',async request=>{const repository=key(request.params),identity=requestIdentity(request),id=z.object({id:z.string().uuid()}).passthrough().parse(request.params).id,input=planned.extend({previewFingerprint:z.string().regex(/^[a-f0-9]{64}$/),message:z.string().trim().min(1).max(4000)}).parse(request.body),{previewFingerprint:_preview,message:_message,...previewInput}=input,plan=await preflight(repository,identity,id,previewInput);if(plan.previewFingerprint!==input.previewFingerprint)throw new ApiError(409,'IMPORT_PREVIEW_CHANGED','目标导入预览已改变，请重新核对。');const prepared={...plan.initialize,message:input.message},snapshot=plan.configured?await datasets.appendImport(repository,identity,prepared):await datasets.initialize(repository,identity,prepared);zipImports.discard(id,identity);return {commitId:snapshot.commitId,totalRows:snapshot.totalRows,importedRows:plan.rowCount};});
+}

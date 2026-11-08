@@ -1,0 +1,22 @@
+{
+  "name": "Oxen repository API",
+  "version": "0.67.0",
+  "url": "https://hub.oxen.ai/api/_spec/oxen_server_openapi.json",
+  "sha256": "2ae57812994900f768c841e7e20d25418555ffbf37c3690775e2af5b8c581660",
+  "snapshotDate": "2026-11-07",
+  "discovery": {
+    "repository": "https://github.com/Oxen-AI/docs",
+    "commit": "be5dfa1717e78dd3a390e8be617c408a764cbdec",
+    "file": "docs.json",
+    "reference": "https://github.com/Oxen-AI/docs/blob/be5dfa1717e78dd3a390e8be617c408a764cbdec/docs.json"
+  },
+  "serverSource": {
+    "repository": "https://github.com/Oxen-AI/Oxen",
+    "commit": "0d3045335f93d77171f95f599a3cee3a080622ae",
+    "note": "Used to verify Query parameter placement and CLI arguments. The hosted OpenAPI is a separately generated artifact; this commit is not claimed as its build commit."
+  },
+  "csghubReference": {
+    "repository": "https://github.com/OpenCSGs/csghub",
+    "commit": "3073d25535d95c1312c6f3904e63feb33c81cd4b"
+  }
+}

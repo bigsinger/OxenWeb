@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*.local
+.data/
+coverage/
+*.log
+.qa/
+# Login-session research captures and historical local project evidence stay local.
+docs/knowledge-base/oxen-saas/captures/
+docs/evidence/*
+!docs/evidence/README.md
+!docs/evidence/r7-layout-drafts/
+!docs/evidence/r8-project-management/

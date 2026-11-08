@@ -1,0 +1,7 @@
+export type MergeResolutionChoice = 'source' | 'target' | 'fields' | 'manual';
+export interface MergeFieldConflict { pointer: string; base?: unknown; source?: unknown; target?: unknown; baseMissing: boolean; sourceMissing: boolean; targetMissing: boolean }
+export interface MergeResolutionFile { path: string; kind: 'text' | 'json' | 'managed-row' | 'managed-label' | 'binary' | 'protected'; allowedChoices: MergeResolutionChoice[]; conflicts: MergeFieldConflict[]; baseText?: string; sourceText?: string; targetText?: string; baseHash?: string; sourceHash?: string; targetHash?: string; blockedReason?: string; summary: string }
+export interface MergeResolutionPreview { source: string; target: string; baseCommitId: string; sourceCommitId: string; targetCommitId: string; files: MergeResolutionFile[]; fingerprint: string; canResolve: boolean; warnings: string[]; native: boolean }
+export interface MergeResolutionDecision { path: string; choice: MergeResolutionChoice; fields?: Array<{ pointer: string; choice: 'source' | 'target' }>; content?: string }
+export interface MergeResolutionRequest { source: string; target: string; base?: string; expectedSourceCommitId: string; expectedTargetCommitId: string; fingerprint: string; resolutions: MergeResolutionDecision[] }
+export interface MergeResolutionResult { operationId: string; status: 'resolved-on-source'; source: string; target: string; previousSourceCommitId: string; sourceCommitId: string; targetCommitId: string; parentIds: string[]; requiresReview: true; output: string; native: boolean }

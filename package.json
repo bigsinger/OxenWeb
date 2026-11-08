@@ -1,0 +1,53 @@
+{
+  "name": "oxen-web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {"node": ">=22.16.0", "npm": ">=10.0.0"},
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n bff,web \"npm run dev --workspace @oxen/server\" \"npm run dev --workspace @oxen/web\"",
+    "build": "npm run typecheck && npm run build --workspace @oxen/web && npm run build --workspace @oxen/server",
+    "typecheck": "vue-tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p apps/server/tsconfig.json",
+    "test": "tsx --test apps/server/test/*.test.ts",
+    "generate:api": "node packages/contracts/generate.mjs",
+    "start": "npm run start --workspace @oxen/server",
+    "oxen:install": "node scripts/oxen.mjs install",
+    "oxen:start": "node scripts/oxen.mjs start",
+    "oxen:stop": "node scripts/oxen.mjs stop",
+    "oxen:seed": "node scripts/oxen.mjs seed",
+    "oxen:status": "node scripts/oxen.mjs status"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^9.2.1",
+    "@fastify/static": "10.1.10",
+    "@tailwindcss/vite": "^4.1.0",
+    "@tanstack/vue-query": "^5.90.0",
+    "diff": "9.0.0",
+    "fastify": "^5.6.0",
+    "lucide-vue-next": "^0.468.0",
+    "openapi-fetch": "^0.15.0",
+    "pdfjs-dist": "6.2.108",
+    "pinia": "^3.0.3",
+    "tailwindcss": "^4.1.0",
+    "vue": "^3.5.22",
+    "vue-router": "^4.6.0",
+    "yauzl": "^3.4.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "@types/yauzl": "^3.4.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "openapi-typescript": "^7.10.0",
+    "tsx": "^4.20.5",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7",
+    "vue-tsc": "^3.1.0"
+  }
+}

@@ -1,0 +1,238 @@
+{
+  "sourceSha256": "2ae57812994900f768c841e7e20d25418555ffbf37c3690775e2af5b8c581660",
+  "corrections": [
+    {
+      "method": "put",
+      "from": "/api/repos/{namespace}/{repo_name}/workspaces/get_or_create",
+      "to": "/api/repos/{namespace}/{repo_name}/workspaces",
+      "evidence": "crates/oxen-server/src/services/workspaces.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "method": "delete",
+      "from": "/api/repos/{namespace}/{repo_name}/workspaces/clear",
+      "to": "/api/repos/{namespace}/{repo_name}/workspaces",
+      "evidence": "crates/oxen-server/src/services/workspaces.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "method": "get",
+      "from": "/api/repos/{namespace}/{repo_name}/compare/{base_head}/entries",
+      "to": "/api/repos/{namespace}/{repo_name}/compare/entries/{base_head}",
+      "evidence": "crates/oxen-server/src/services/compare.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "method": "get",
+      "from": "/api/repos/{namespace}/{repo_name}/compare/{base_head}/commits",
+      "to": "/api/repos/{namespace}/{repo_name}/compare/commits/{base_head}",
+      "evidence": "crates/oxen-server/src/services/compare.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "method": "get",
+      "from": "/api/repos/{namespace}/{repo_name}/compare/{base_head}/tree",
+      "to": "/api/repos/{namespace}/{repo_name}/compare/dir_tree/{base_head}",
+      "evidence": "crates/oxen-server/src/services/compare.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "method": "get",
+      "from": "/api/repos/{namespace}/{repo_name}/compare/{base_head}/dir/{dir}/entries",
+      "to": "/api/repos/{namespace}/{repo_name}/compare/entries/{base_head}/dir/{dir}",
+      "evidence": "crates/oxen-server/src/services/compare.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "from": "post /api/repos/{namespace}/{repo_name}/data_frames/{resource}/index",
+      "to": "post /api/repos/{namespace}/{repo_name}/data_frames/index/{resource}",
+      "evidence": "crates/oxen-server/src/services/data_frames.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "from": "get /api/repos/{namespace}/{repo_name}/metadata/{resource}",
+      "to": "get /api/repos/{namespace}/{repo_name}/meta/{resource}",
+      "evidence": "crates/oxen-server/src/services/meta.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "from": "put /api/repos/{namespace}/{repo_name}/metadata/{resource}",
+      "to": "post /api/repos/{namespace}/{repo_name}/meta/{resource}",
+      "evidence": "crates/oxen-server/src/services/meta.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "schema": "FileContents",
+      "from": "externally tagged Rust enum objects",
+      "to": "plain JSON string (verified text transport)",
+      "evidence": "crates/liboxen/src/model/file.rs@0d3045335f93d77171f95f599a3cee3a080622ae"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/dir/{resource}",
+      "parameter": "page",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/dir/{resource}",
+      "parameter": "page_size",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/dir/{resource}",
+      "parameter": "api_version",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/dir/{resource}",
+      "parameter": "depth",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/dir/{resource}",
+      "parameter": "sort_by",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/dir/{resource}",
+      "parameter": "reverse",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/commits/history/{resource}",
+      "parameter": "page",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/commits/history/{resource}",
+      "parameter": "page_size",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "columns",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "delimiter",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "find_embedding_where",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "filter",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "output",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "output_column",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "page_size",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "page",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "row",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "randomize",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "reverse",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "slice",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "sort_by",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "sort_by_similarity_to",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "sql",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/data_frames/{resource}",
+      "parameter": "take",
+      "from": "required path",
+      "to": "optional query"
+    },
+    {
+      "method": "get",
+      "path": "/api/repos/{namespace}/{repo_name}/workspaces",
+      "parameter": "name",
+      "from": "required path",
+      "to": "optional query"
+    }
+  ],
+  "operationIds": "unique method + path; original retained in x-original-operation-id"
+}

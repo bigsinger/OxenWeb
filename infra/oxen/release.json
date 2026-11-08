@@ -1,0 +1,10 @@
+{
+  "version": "0.67.0",
+  "source": "https://github.com/Oxen-AI/Oxen/releases/tag/v0.67.0",
+  "platform": "Windows x86_64 CLI with Linux x86_64 server under WSL2",
+  "artifacts": {
+    "oxen-windows-x86_64.exe.zip": "c16cc62292fa92008fe6f2d2f0b49ad05e153a33256fb8b02c0867884447b209",
+    "oxen-server-linux-x86_64.tar.gz": "ac9c6b2fe5052b2e52a9e5139abf8726a03546ab367cf8643ec56c696e3b6d7e"
+  },
+  "checksumNote": "SHA256 recorded from the official HTTPS release downloads used during local setup; these are reproducibility checks, not a claim of an upstream signed checksum."
+}

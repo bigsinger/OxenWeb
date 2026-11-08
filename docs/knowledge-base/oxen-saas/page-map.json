@@ -1,0 +1,154 @@
+{
+  "snapshotDate": "2026-11-08",
+  "timezone": "Asia/Shanghai",
+  "scope": "Original data management and collaboration, JSONL, local custom labels",
+  "referenceProject": "https://www.oxen.ai/bigsinger/oxen-web-acceptance-20261108",
+  "credentialsStored": false,
+  "localValidation": "../../ui-redesign-2026-11-08.md",
+  "localEvidenceIndex": "../../evidence/ui-redesign-2026-11-08/index.json",
+  "r2LocalValidation": "../../browser-r2-2026-11-08.md",
+  "r2Implementation": "../../implementation-r2.md",
+  "r2LocalEvidenceDirectory": "../../evidence/r2-2026-11-08/",
+  "pages": [
+    {
+      "id": "UI01",
+      "name": "Projects",
+      "saasPath": "/bigsinger",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/01-projects.txt"
+      ],
+      "components": [
+        "apps/web/src/views/RepositoriesView.vue"
+      ]
+    },
+    {
+      "id": "UI02",
+      "name": "Repository",
+      "saasPath": "/bigsinger/oxen-web-acceptance-20261108",
+      "evidence": [
+        "captures/2026-11-08/repository-layout.txt",
+        "captures/2026-11-08/developer-tools.txt"
+      ],
+      "components": [
+        "apps/web/src/App.vue",
+        "apps/web/src/views/RepositoryView.vue",
+        "apps/web/src/components/FileBrowser.vue"
+      ]
+    },
+    {
+      "id": "UI03",
+      "name": "Manage files",
+      "saasPath": "/bigsinger/oxen-web-acceptance-20261108/upload/main",
+      "evidence": [
+        "captures/2026-11-08/manage-files.txt",
+        "../../evidence/saas-2026-11-08/06-upload-committed.txt"
+      ],
+      "components": [
+        "apps/web/src/components/FileBrowser.vue",
+        "apps/web/src/components/WorkspacePanel.vue",
+        "apps/web/src/components/ImportDatasetDialog.vue"
+      ]
+    },
+    {
+      "id": "UI04",
+      "name": "Dataset and query",
+      "saasPath": "/bigsinger/oxen-web-acceptance-20261108/database/main/sample.jsonl",
+      "evidence": [
+        "captures/2026-11-08/dataset-resource-toolbar.txt",
+        "../../evidence/saas-2026-11-08/15-natural-query.txt",
+        "captures/2026-11-08/dataset-download-recheck.txt"
+      ],
+      "components": [
+        "apps/web/src/components/FilePreview.vue",
+        "apps/web/src/components/QueryPanel.vue"
+      ]
+    },
+    {
+      "id": "UI05",
+      "name": "Row details",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/17-row-detail.txt"
+      ],
+      "components": [
+        "apps/web/src/components/FilePreview.vue",
+        "apps/web/src/components/AnnotationPanel.vue",
+        "apps/web/src/components/LabelManager.vue"
+      ]
+    },
+    {
+      "id": "UI06",
+      "name": "Dataset workspace",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/08-column-editor.txt",
+        "../../evidence/saas-2026-11-08/11-workspace-commit.txt"
+      ],
+      "components": [
+        "apps/web/src/components/DatasetEditor.vue",
+        "apps/web/src/components/WorkspacePanel.vue"
+      ]
+    },
+    {
+      "id": "UI07",
+      "name": "File previews",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/16-image-preview.txt",
+        "../../evidence/saas-2026-11-08/18-pdf-preview.txt",
+        "../../evidence/saas-2026-11-08/19-text-preview.txt"
+      ],
+      "components": [
+        "apps/web/src/components/FilePreview.vue",
+        "apps/web/src/components/PdfPreview.vue"
+      ]
+    },
+    {
+      "id": "UI08",
+      "name": "Commit history",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/20-file-history.txt",
+        "../../evidence/saas-2026-11-08/21-commit-detail.txt"
+      ],
+      "components": [
+        "apps/web/src/components/CommitPanel.vue"
+      ]
+    },
+    {
+      "id": "UI09",
+      "name": "Tabular diff",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/22-jsonl-structured-diff.txt"
+      ],
+      "components": [
+        "apps/web/src/components/TabularDiff.vue"
+      ]
+    },
+    {
+      "id": "UI10",
+      "name": "Branches and merge requests",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/03-branches.txt",
+        "../../evidence/saas-2026-11-08/05-merge-requests-empty.txt",
+        "../../evidence/saas-2026-11-08/23-branch-compare-recheck.txt"
+      ],
+      "unverified": [
+        "Cloud MR lifecycle beyond failed nonempty branch compare"
+      ],
+      "components": [
+        "apps/web/src/components/BranchPanel.vue",
+        "apps/web/src/components/MergeRequestPanel.vue"
+      ]
+    },
+    {
+      "id": "UI11",
+      "name": "Settings and access",
+      "evidence": [
+        "../../evidence/saas-2026-11-08/12-settings.txt",
+        "../../evidence/saas-2026-11-08/13-access-roles.txt"
+      ],
+      "observedReadOnly": true,
+      "components": [
+        "apps/web/src/components/SettingsPanel.vue",
+        "apps/web/src/components/AccessPanel.vue"
+      ]
+    }
+  ]
+}

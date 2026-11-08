@@ -1,0 +1,8 @@
+/bin/
+/downloads/
+/data/
+/logs/
+/repos/
+/config/
+/run/
+/local.env
