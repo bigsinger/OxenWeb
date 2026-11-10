@@ -26,6 +26,19 @@
   --danger: #f08b90;
   --warning: #e4bd72;
   --radius: 6px;
+  --focus-outline-width: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --text-caption-size: 12px;
+  --reading-line-height: 1.8;
+  --readable-copy-width: 900px;
+  --release-notes-min-height: 160px;
+  --panel-loading-min-height: 120px;
+  --panel-loading-gap: 12px;
+  --panel-loading-icon-size: 18px;
   --workbench-inspector-width: 720px;
   --workbench-overlay: #0006;
   --workbench-check-width: 32px;
@@ -70,6 +83,9 @@ code { font-size: .92em; }
 ::-webkit-scrollbar-track { background: #202023; }
 ::-webkit-scrollbar-thumb { background: #505057; border: 2px solid #202023; border-radius: 5px; }
 .muted { color: var(--muted); }
+.repository-panel-loading { display:flex;align-items:center;flex-wrap:wrap;gap:var(--panel-loading-gap);min-height:var(--panel-loading-min-height);padding:var(--page-gutter);color:var(--muted);border:1px solid var(--line);border-radius:var(--radius);background:var(--surface); }
+.repository-panel-loading svg { width:var(--panel-loading-icon-size);height:var(--panel-loading-icon-size); }
+.repository-panel-loading p { flex:1;min-width:0;overflow-wrap:anywhere; }
 .eyebrow { display: block; color: var(--muted); font-size: 11px; letter-spacing: 1.7px; font-weight: 600; }
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 .main-shell { flex: 1; min-width: 0; }

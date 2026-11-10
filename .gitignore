@@ -41,6 +41,8 @@ docs/evidence/**/*.png
 !docs/evidence/r20/release-form-desktop.png
 !docs/evidence/r21/
 !docs/evidence/r21/*.png
+!docs/evidence/r22/
+!docs/evidence/r22/*.png
 
 # Dataset-specific analysis outputs stay on this workstation.
 docs/research/real-dataset-*

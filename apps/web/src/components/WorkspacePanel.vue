@@ -3,7 +3,8 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Check, CheckCircle2, ChevronRight, CloudUpload, FilePlus2, FileText, FolderGit2, GitBranch, GitCommitHorizontal, LoaderCircle, Plus, RefreshCw, Save, Trash2, Upload, X } from 'lucide-vue-next';
 import type { Capabilities, FilePreview, JobItem, WorkspaceItem } from '@oxen/shared';
-import { post, queryString, remove, request } from '../api';
+import { type ApiError, type DeleteOutcome, post, queryString, removeAndVerify, request, verifyDeletion } from '../api';
+import { credentialContext } from '../access-context';
 import { useAppStore } from '../stores/app';
 const props = defineProps<{ base: string; branch: string; capabilities?: Capabilities }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -16,6 +17,8 @@ const intentPathValid=computed(()=>!requestedPath.value||validPath(requestedPath
 function dismissIntent(){void router.replace({query:{...route.query,action:undefined}});}
 const workspaces = ref<WorkspaceItem[]>([]), selectedId = ref(''), loading = ref(false), busy = ref(false), error = ref(''), actionError = ref('');
 const selected = computed(() => workspaces.value.find(item => item.id === selectedId.value));
+const deletionErrors = ref<Record<string, ApiError>>({}), deleteTarget = ref<WorkspaceItem | null>(null), deletionNotice = ref('');
+const contextKey = computed(() => JSON.stringify([props.base, credentialContext(app.status?.identity)]));
 const createOpen = ref(false), deleteOpen = ref(false), commitOpen = ref(false), editorOpen = ref(false), uploadOpen = ref(false);
 const uploadPath = ref(''), pendingUpload = shallowRef<File | null>(null);
 const name = ref(''), message = ref(''), path = ref(''), content = ref(''), formError = ref('');
@@ -27,6 +30,7 @@ const supportsPush = computed(() => writable.value && (app.status?.mode === 'dem
 let loadVersion = 0;
 let jobVersion = 0;
 let readVersion = 0;
+let contextVersion = 0;
 let jobTimer: ReturnType<typeof setTimeout> | undefined;
 let mounted = true;
 const statusText = (status: string) => (({ added: '新增', modified: '修改', removed: '删除' } as Record<string, string>)[status] ?? status);
@@ -34,15 +38,50 @@ const jobText = (status: string) => ({ queued: '排队中', running: '执行中'
 const formatDate = (value?: string) => value ? new Date(value).toLocaleDateString('zh-CN') : '当前会话';
 
 async function load() {
-  const version = ++loadVersion; loading.value = true; error.value = '';
+  const version = ++loadVersion, context = contextKey.value; loading.value = true; error.value = '';
+  const isCurrent = () => mounted && version === loadVersion && context === contextKey.value;
   try {
     const data = await request<WorkspaceItem[]>(props.base + '/workspaces');
-    if (version !== loadVersion) return;
-    workspaces.value = data;
-    if (!data.some(item => item.id === selectedId.value)) selectedId.value = requestedAction.value ? data.find(item=>item.branch===props.branch)?.id??'' : data[0]?.id ?? '';
-  } catch (cause) { if (version === loadVersion) error.value = (cause as Error).message; }
-  finally { if (version === loadVersion) loading.value = false; }
+    if (!isCurrent()) return;
+    applyWorkspaces(data);
+    for (const [id, failure] of Object.entries(deletionErrors.value)) {
+      const outcome = await verifyDeletion(failure, { readCurrent: async () => data, isRemoved: items => !items.some(item => item.id === id), isCurrent });
+      if (!isCurrent()) return;
+      if (outcome.state === 'confirmed') { delete deletionErrors.value[id]; deletionNotice.value = '已从最新状态核对，工作区已不存在。'; if (deleteTarget.value?.id === id) deleteOpen.value = false; }
+    }
+  } catch (cause) { if (isCurrent()) error.value = (cause as Error).message; }
+  finally { if (isCurrent()) loading.value = false; }
 }
+function applyWorkspaces(data: WorkspaceItem[]) {
+  workspaces.value = data;
+  if (!data.some(item => item.id === selectedId.value)) selectedId.value = requestedAction.value ? data.find(item => item.branch === props.branch)?.id ?? '' : data[0]?.id ?? '';
+}
+function unknownDeletion(outcome: Extract<DeleteOutcome<WorkspaceItem[]>, { state: 'unknown' }>) {
+  return '删除结果尚未确认，已暂停对此工作区重复删除。请核对最新状态。' + (outcome.verificationError ? ` ${outcome.verificationError.message}` : '');
+}
+function openDelete() {
+  if (!selected.value) return;
+  deleteTarget.value = selected.value; formError.value = deletionErrors.value[selected.value.id] ? '上次删除结果尚未确认，请先核对结果。' : ''; deleteOpen.value = true;
+}
+async function deleteWorkspace(recheck: boolean) {
+  const target = deleteTarget.value; if (!target || busy.value) return;
+  const context = contextKey.value, generation = contextVersion, base = props.base, isCurrent = () => mounted && generation === contextVersion && context === contextKey.value;
+  const previous = deletionErrors.value[target.id]; if ((!recheck && previous) || (recheck && !previous)) return;
+  busy.value = true; formError.value = ''; deletionNotice.value = '';
+  const verification = { readCurrent: () => request<WorkspaceItem[]>(base + '/workspaces'), isRemoved: (items: WorkspaceItem[]) => !items.some(item => item.id === target.id), isCurrent };
+  try {
+    const outcome = recheck && previous ? await verifyDeletion(previous, verification) : await removeAndVerify(base + '/workspaces/' + encodeURIComponent(target.id), verification);
+    if (!isCurrent()) return;
+    if (outcome.state === 'unknown') { deletionErrors.value[target.id] = outcome.error; formError.value = unknownDeletion(outcome); return; }
+    delete deletionErrors.value[target.id]; deleteOpen.value = false;
+    applyWorkspaces(outcome.current ?? workspaces.value.filter(item => item.id !== target.id));
+    deletionNotice.value = outcome.via === 'read' ? '已从最新状态核对，工作区已不存在。' : '工作区已删除。';
+    app.notify(deletionNotice.value); emit('changed');
+    if (!outcome.current) await load();
+  } catch (cause) { if (isCurrent()) formError.value = (cause as Error).message; }
+  finally { if (isCurrent()) busy.value = false; }
+}
+function recheckSelectedDeletion() { if (!selected.value) return; deleteTarget.value = selected.value; deleteOpen.value = true; void deleteWorkspace(true); }
 function openCreate() { name.value = ''; formError.value = ''; createOpen.value = true; }
 function invalidateRead() { ++readVersion; reading.value = false; }
 function openEditor(filePath = '') { invalidateRead(); path.value = filePath || (directoryPrefix.value&&intentPathValid.value?directoryPrefix.value+'/':''); content.value = ''; formError.value = ''; editorOpen.value = true; if (filePath) void readFile(); }
@@ -125,11 +164,7 @@ async function commit() {
   finally { busy.value = false; }
 }
 async function erase() {
-  if (!selected.value) return;
-  busy.value = true; formError.value = '';
-  try { await remove(props.base + '/workspaces/' + encodeURIComponent(selected.value.id)); deleteOpen.value = false; app.notify('工作区已删除'); await load(); }
-  catch (cause) { formError.value = (cause as Error).message; }
-  finally { busy.value = false; }
+  await deleteWorkspace(false);
 }
 async function push() {
   busy.value = true; actionError.value = '';
@@ -147,7 +182,7 @@ async function track(value: JobItem, current: number) {
     catch (cause) { if (current === jobVersion) actionError.value = `读取任务状态失败：${(cause as Error).message}`; }
   }, 1000);
 }
-watch(() => props.base, () => { selectedId.value = ''; actionError.value = ''; job.value = null; ++jobVersion; clearTimeout(jobTimer); void load(); }, { immediate: true });
+watch(contextKey, () => { ++contextVersion; ++loadVersion; busy.value = false; selectedId.value = ''; workspaces.value = []; actionError.value = ''; formError.value = ''; deletionErrors.value = {}; deletionNotice.value = ''; deleteTarget.value = null; createOpen.value = deleteOpen.value = commitOpen.value = editorOpen.value = uploadOpen.value = false; job.value = null; ++jobVersion; clearTimeout(jobTimer); void load(); }, { immediate: true, flush: 'sync' });
 watch(() => [props.base, selectedId.value, path.value], invalidateRead, { flush: 'sync' });
 watch(editorOpen, open => { if (!open) invalidateRead(); }, { flush: 'sync' });
 onBeforeUnmount(() => { mounted = false; invalidateRead(); ++loadVersion; ++jobVersion; clearTimeout(jobTimer); });
@@ -158,14 +193,15 @@ onBeforeUnmount(() => { mounted = false; invalidateRead(); ++loadVersion; ++jobV
     <div class="workspace-explanation"><strong>工作区保存未提交的文件变更，分支保存已提交的版本。</strong><p>这里是本机 Oxen 服务提供的文件工作区。日常样本编辑和打标请使用“数据编辑”：可多次保存本机私有草稿，核对后一次提交；无需手动新建工作区。</p></div>
     <header class="section-heading"><div><h2>工作区</h2><p class="muted">暂存文件、检查变更，再一起提交。</p></div><button class="btn btn-primary" :disabled="!writable || busy" @click="openCreate"><Plus :size="16" /> 新建工作区</button></header>
     <p v-if="!writable" class="capability-note">{{ capabilities?.reasons.workspaces || capabilities?.reasons.write || '当前服务未启用工作区写入。' }}</p>
+    <p v-if="deletionNotice" class="notice" role="status">{{ deletionNotice }}</p>
     <section v-if="requestedAction" class="workspace-intent panel"><div class="intent-icon"><Upload v-if="requestedAction==='upload'" :size="22"/><FileText v-else :size="22"/></div><div><strong>{{requestedAction==='upload'?'上传文件':requestedAction==='edit-file'?'编辑文件':'新建文本文件'}}</strong><p>目标分支 <code>{{branch}}</code> · {{requestedAction==='edit-file'?'文件':'目录'}} <code>{{requestedPath||'根目录'}}</code></p><span v-if="!intentPathValid" class="form-error">目标路径无效，请返回文件页重新选择。</span><span v-else-if="!selected||selected.branch!==branch">选择此分支的工作区，或新建工作区后继续。</span><span v-else>使用工作区 <strong>{{selected.name}}</strong> 暂存变更，检查后再提交。</span></div><button v-if="intentPathValid&&selected?.branch===branch&&requestedAction==='upload'" class="btn btn-primary" :disabled="!writable||busy" @click="upload?.click()"><Upload :size="15"/>选择上传文件</button><button v-else-if="intentPathValid&&selected?.branch===branch" class="btn btn-primary" :disabled="!writable||busy" @click="openEditor(requestedAction==='edit-file'?requestedPath:'')"><FilePlus2 :size="15"/>{{requestedAction==='edit-file'?'打开文件编辑器':'新建文本文件'}}</button><button v-else-if="intentPathValid" class="btn" :disabled="!writable||busy" @click="openCreate"><Plus :size="15"/>新建工作区</button><button class="icon-button" aria-label="关闭文件操作提示" @click="dismissIntent"><X :size="16"/></button></section>
     <div v-if="error" class="error-state" role="alert">{{ error }}<button class="btn btn-ghost" @click="load">重试</button></div>
     <div v-else-if="loading && !workspaces.length" class="empty" role="status"><LoaderCircle class="spinning" :size="22" /> 正在读取工作区…</div>
     <div v-else-if="!workspaces.length" class="workspace-empty panel"><div class="empty-art"><FolderGit2 :size="36" :stroke-width="1.3" /></div><h3>给数据变更留一块空间</h3><p class="muted">创建工作区后，可以添加文件、编辑内容并提交到分支。<br />尚未提交的修改会保存在工作区中。</p><button class="btn btn-primary" :disabled="!writable" @click="openCreate"><Plus :size="16" /> 创建第一个工作区</button></div>
     <div v-else class="workspace-layout">
       <aside class="workspace-list panel" aria-label="选择工作区"><div class="list-caption"><span>工作区 · {{ workspaces.length }}</span><button class="icon-button" :disabled="loading" aria-label="刷新工作区" @click="load"><RefreshCw :size="14" :class="{ spinning: loading }" /></button></div><button v-for="item in workspaces" :key="item.id" class="workspace-option" :class="{ active: selectedId === item.id }" @click="selectedId = item.id; actionError = ''"><FolderGit2 :size="17" /><span><strong>{{ item.name }}</strong><small>{{ item.branch }} · {{ item.changes.length }} 处变更</small></span><ChevronRight :size="14" /></button></aside>
-      <div v-if="selected" class="workspace-detail">
-        <article class="panel workspace-card"><header class="workspace-card-heading"><div><h3>{{ selected.name }}</h3><p class="muted"><GitBranch :size="13" /> {{ selected.branch }} <span>·</span> 创建于 {{ formatDate(selected.createdAt) }}</p></div><button class="icon-button delete-button" :disabled="busy || !writable" aria-label="删除工作区" @click="formError = ''; deleteOpen = true"><Trash2 :size="17" /></button></header><div class="workspace-toolbar"><button class="btn btn-ghost" :disabled="!writable || busy" @click="openEditor()"><FilePlus2 :size="15" /> 添加 / 编辑文本</button><button class="btn btn-ghost" :disabled="!writable || busy" @click="upload?.click()"><Upload :size="15" /> 上传文件</button><input ref="upload" type="file" class="visually-hidden" aria-label="上传工作区文件" @change="uploadFile" /><input ref="fileInput" type="file" class="visually-hidden" aria-label="导入文本文件" @change="loadText" /></div><div class="changes-heading"><strong>待提交变更</strong><span class="badge">{{ selected.changes.length }}</span></div><div v-if="!selected.changes.length" class="clean-state"><CheckCircle2 :size="24" /><div><strong>工作区很干净</strong><p class="muted">添加或编辑文件，开始这次数据更新。</p></div></div><div v-else class="change-list"><div v-for="change in selected.changes" :key="change.path" class="change-row"><FileText :size="15" /><button v-if="change.status !== 'removed'" type="button" class="change-file-button" :disabled="!writable || busy" @click="openEditor(change.path)"><code>{{ change.path }}</code></button><code v-else>{{ change.path }}</code><span class="change-status" :class="`status-${change.status}`">{{ statusText(change.status) }}</span></div></div><footer class="workspace-footer"><span class="muted">{{ selected.changes.length }} 个待提交文件</span><button class="btn btn-primary" :disabled="!writable || busy || !selected.changes.length" @click="formError = ''; message = ''; commitOpen = true"><GitCommitHorizontal :size="16" /> 提交变更</button></footer></article>
+      <div v-if="selected" class="workspace-detail"><p v-if="deletionErrors[selected.id]" class="error-state" role="alert">此工作区上次删除结果尚未确认，未自动再次删除。<button class="btn" :disabled="busy || loading" @click="recheckSelectedDeletion">核对删除结果</button></p>
+        <article class="panel workspace-card"><header class="workspace-card-heading"><div><h3>{{ selected.name }}</h3><p class="muted"><GitBranch :size="13" /> {{ selected.branch }} <span>·</span> 创建于 {{ formatDate(selected.createdAt) }}</p></div><button class="icon-button delete-button" :disabled="busy || !writable" aria-label="删除工作区" @click="openDelete"><Trash2 :size="17" /></button></header><div class="workspace-toolbar"><button class="btn btn-ghost" :disabled="!writable || busy" @click="openEditor()"><FilePlus2 :size="15" /> 添加 / 编辑文本</button><button class="btn btn-ghost" :disabled="!writable || busy" @click="upload?.click()"><Upload :size="15" /> 上传文件</button><input ref="upload" type="file" class="visually-hidden" aria-label="上传工作区文件" @change="uploadFile" /><input ref="fileInput" type="file" class="visually-hidden" aria-label="导入文本文件" @change="loadText" /></div><div class="changes-heading"><strong>待提交变更</strong><span class="badge">{{ selected.changes.length }}</span></div><div v-if="!selected.changes.length" class="clean-state"><CheckCircle2 :size="24" /><div><strong>工作区很干净</strong><p class="muted">添加或编辑文件，开始这次数据更新。</p></div></div><div v-else class="change-list"><div v-for="change in selected.changes" :key="change.path" class="change-row"><FileText :size="15" /><button v-if="change.status !== 'removed'" type="button" class="change-file-button" :disabled="!writable || busy" @click="openEditor(change.path)"><code>{{ change.path }}</code></button><code v-else>{{ change.path }}</code><span class="change-status" :class="`status-${change.status}`">{{ statusText(change.status) }}</span></div></div><footer class="workspace-footer"><span class="muted">{{ selected.changes.length }} 个待提交文件</span><button class="btn btn-primary" :disabled="!writable || busy || !selected.changes.length" @click="formError = ''; message = ''; commitOpen = true"><GitCommitHorizontal :size="16" /> 提交变更</button></footer></article>
         <article class="push-card panel"><div><CloudUpload :size="23" /><span><strong>同步到远端</strong><p class="muted">{{ app.status?.mode === 'demo' ? '仅运行本地演示，不会连接真实远端。' : '将已提交的版本推送到远端仓库。' }}</p></span></div><button class="btn btn-ghost" :disabled="!supportsPush || busy || (job?.status === 'running' || job?.status === 'queued')" @click="push"><CloudUpload :size="15" /> {{ app.status?.mode === 'demo' ? '演示推送' : 'Push' }}</button></article>
         <p v-if="!supportsPush" class="muted small-note">{{ capabilities?.reasons.cli || '推送需要配置受管仓库和 Oxen CLI。' }}</p>
       </div>
@@ -176,7 +212,7 @@ onBeforeUnmount(() => { mounted = false; invalidateRead(); ++loadVersion; ++jobV
     <div v-if="createOpen || deleteOpen || commitOpen || editorOpen || uploadOpen" class="modal-scrim" @click.self="!busy && (createOpen = deleteOpen = commitOpen = editorOpen = uploadOpen = false)">
       <section class="dialog" :class="{ 'editor-dialog': editorOpen }" role="dialog" aria-modal="true" :aria-label="createOpen ? '新建工作区' : deleteOpen ? '删除工作区' : commitOpen ? '提交变更' : uploadOpen ? '上传工作区文件' : '编辑工作区文本'" @keydown.esc="!busy && (createOpen = deleteOpen = commitOpen = editorOpen = uploadOpen = false)"><header><h3>{{ createOpen ? '新建工作区' : deleteOpen ? '删除工作区' : commitOpen ? '提交变更' : uploadOpen ? '上传文件' : '添加 / 编辑文本' }}</h3><button class="icon-button" :disabled="busy" aria-label="关闭对话框" @click="createOpen = deleteOpen = commitOpen = editorOpen = uploadOpen = false"><X :size="19" /></button></header>
         <form v-if="createOpen" @submit.prevent="create"><p class="muted">基于 <strong>{{ branch }}</strong> 分支创建一个独立的编辑空间。</p><label class="form-label">工作区名称<input v-model="name" class="field" placeholder="例如 图像标注修订" maxlength="120" required :disabled="busy" /></label><p v-if="formError" class="form-error" role="alert">{{ formError }}</p><footer><button type="button" class="btn btn-ghost" :disabled="busy" @click="createOpen = false">取消</button><button class="btn btn-primary" :disabled="busy"><LoaderCircle v-if="busy" class="spinning" :size="15" /> 创建工作区</button></footer></form>
-        <form v-else-if="deleteOpen" @submit.prevent="erase"><p class="muted">确认删除工作区 <strong>{{ selected?.name }}</strong>？</p><p v-if="selected?.changes.length" class="delete-warning">此工作区有 {{ selected.changes.length }} 处尚未提交的变更，删除后这些变更将被丢弃。</p><p v-if="formError" class="form-error" role="alert">{{ formError }}</p><footer><button type="button" class="btn btn-ghost" :disabled="busy" @click="deleteOpen = false">保留工作区</button><button class="btn btn-danger" :disabled="busy"><LoaderCircle v-if="busy" class="spinning" :size="15" /> 确认删除</button></footer></form>
+        <form v-else-if="deleteOpen" @submit.prevent="erase"><p v-if="deleteTarget && deletionErrors[deleteTarget.id]" class="muted">核对工作区 <strong>{{ deleteTarget.name }}</strong> 的最新状态；核对不会再次删除。</p><p v-else class="muted">确认删除工作区 <strong>{{ deleteTarget?.name }}</strong>？</p><p v-if="deleteTarget?.changes.length && !deletionErrors[deleteTarget.id]" class="delete-warning">此工作区有 {{ deleteTarget.changes.length }} 处尚未提交的变更，删除后这些变更将被丢弃。</p><p v-if="formError" class="form-error" role="alert">{{ formError }}</p><footer><button type="button" class="btn btn-ghost" :disabled="busy" @click="deleteOpen = false">{{ deleteTarget && deletionErrors[deleteTarget.id] ? '稍后核对' : '保留工作区' }}</button><button v-if="deleteTarget && deletionErrors[deleteTarget.id]" type="button" class="btn" :disabled="busy" @click="deleteWorkspace(true)"><LoaderCircle v-if="busy" class="spinning" :size="15" />核对删除结果</button><button v-else class="btn btn-danger" :disabled="busy"><LoaderCircle v-if="busy" class="spinning" :size="15" /> 确认删除</button></footer></form>
         <form v-else-if="commitOpen" @submit.prevent="commit"><p class="muted">将 {{ selected?.changes.length }} 个文件的变更提交到 <strong>{{ selected?.branch }}</strong>。</p><label class="form-label">提交说明<textarea v-model="message" class="field" rows="3" placeholder="描述这次数据更新…" maxlength="2000" required :disabled="busy" /></label><p v-if="formError" class="form-error" role="alert">{{ formError }}</p><footer><button type="button" class="btn btn-ghost" :disabled="busy" @click="commitOpen = false">取消</button><button class="btn btn-primary" :disabled="busy"><LoaderCircle v-if="busy" class="spinning" :size="15" /><GitCommitHorizontal v-else :size="16" /> 确认提交</button></footer></form>
         <form v-else-if="uploadOpen" @submit.prevent="stageUpload"><p class="muted">{{ pendingUpload?.name }} · {{ ((pendingUpload?.size || 0) / 1024).toFixed(1) }} KB</p><label class="form-label">仓库内目标路径<input v-model="uploadPath" class="field mono" required maxlength="1024" placeholder="images/example.png" :disabled="busy" /></label><p class="editor-notice">可以上传到嵌套目录。同名文件将替换工作区中的内容，提交前可检查变更。单文件最大 10 MB。</p><p v-if="formError" class="form-error" role="alert">{{ formError }}</p><footer><button type="button" class="btn btn-ghost" :disabled="busy" @click="uploadOpen = false">取消</button><button class="btn btn-primary" :disabled="busy || !writable"><LoaderCircle v-if="busy" class="spin" :size="15" /><Upload v-else :size="15" /> 上传到工作区</button></footer></form>
         <form v-else @submit.prevent="saveFile"><p class="editor-notice">内容会替换工作区中的同名文件。保存后仍需提交才能生成版本。</p><label class="form-label">文件路径<span class="file-path-input"><input v-model="path" class="field mono" placeholder="例如 annotations/review.json" maxlength="500" required :disabled="busy || reading" /><button type="button" class="btn btn-ghost" :disabled="busy || reading || !path.trim()" @click="readFile"><LoaderCircle v-if="reading" :size="14" class="spinning" />读取文件</button></span></label><label class="form-label">文件内容<textarea v-model="content" class="field code-editor" rows="13" spellcheck="false" placeholder="输入 UTF-8 文本内容…" :disabled="busy || reading" /></label><p v-if="formError" class="form-error" role="alert">{{ formError }}</p><footer class="editor-footer"><button type="button" class="btn btn-ghost import-button" :disabled="busy || reading" @click="fileInput?.click()"><Upload :size="15" /> 从文件导入</button><button type="button" class="btn btn-ghost" :disabled="busy" @click="editorOpen = false">取消</button><button class="btn btn-primary" :disabled="busy || reading"><LoaderCircle v-if="busy" class="spinning" :size="15" /><Save v-else :size="15" /> 保存到工作区</button></footer></form>

@@ -5,13 +5,13 @@ import {ApiError} from './errors.js';
 import {durableWriteFile} from './durable-store.js';
 
 export type OperationState='prepared'|'running'|'succeeded'|'failed'|'reconciliation-required';
-export interface OperationAnchors {commitId?:string;workspaceId?:string;jobId?:string;releaseId?:string;sourceCommitId?:string;targetCommitId?:string;targetHead?:string;assetHashes?:string[]}
+export interface OperationAnchors {commitId?:string;workspaceId?:string;jobId?:string;releaseId?:string;resourceId?:string;sourceCommitId?:string;targetCommitId?:string;targetHead?:string;assetHashes?:string[]}
 export interface OperationInput {id:string;actorId:string;actorName:string;kind:string;key?:RepoKey;ref?:string;expectedHead?:string;payload:unknown}
 export interface OperationRecord extends Omit<OperationInput,'payload'> {digest:string;state:OperationState;createdAt:string;updatedAt:string;anchors:OperationAnchors;reasonCode?:string;compactedAt?:string}
 export interface OperationResolution {state:'succeeded'|'failed'|'reconciliation-required';anchors?:OperationAnchors;reasonCode:string}
 function canonical(value:unknown):string{if(value===null||typeof value!=='object')return JSON.stringify(value)??'null';if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';return '{'+Object.entries(value).filter(([,v])=>v!==undefined).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,v])=>JSON.stringify(k)+':'+canonical(v)).join(',')+'}';}
 function digest(input:OperationInput){return createHash('sha256').update(canonical({...input,payload:input.payload,actorName:undefined})).digest('hex');}
-function safeAnchors(anchors:OperationAnchors):OperationAnchors{const result:OperationAnchors={};for(const key of ['commitId','workspaceId','jobId','releaseId','sourceCommitId','targetCommitId','targetHead'] as const){const value=anchors[key];if(value!==undefined){if(typeof value!=='string'||value.length>256||/[\r\n]/.test(value))throw new Error('Invalid operation anchor');result[key]=value;}}if(anchors.assetHashes){if(anchors.assetHashes.length>50||anchors.assetHashes.some(hash=>!/^[a-f0-9]{64}$/.test(hash)))throw new Error('Invalid asset hash');result.assetHashes=[...anchors.assetHashes];}return result;}
+function safeAnchors(anchors:OperationAnchors):OperationAnchors{const result:OperationAnchors={};for(const key of ['commitId','workspaceId','jobId','releaseId','resourceId','sourceCommitId','targetCommitId','targetHead'] as const){const value=anchors[key];if(value!==undefined){if(typeof value!=='string'||value.length>256||/[\r\n]/.test(value)||key==='resourceId'&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value))throw new Error('Invalid operation anchor');result[key]=value;}}if(anchors.assetHashes){if(anchors.assetHashes.length>50||anchors.assetHashes.some(hash=>!/^[a-f0-9]{64}$/.test(hash)))throw new Error('Invalid asset hash');result.assetHashes=[...anchors.assetHashes];}return result;}
 /** A metadata-only coordinator. It never retries an unknown remote side effect. */
 export class OperationJournal{
   private records=new Map<string,OperationRecord>();private chain:Promise<unknown>=Promise.resolve();

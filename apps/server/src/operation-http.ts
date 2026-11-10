@@ -11,6 +11,8 @@ import type {RepositoryAccessService} from './repository-access.js';
 import type {GlobalAuditService} from './global-audit.js';
 
 interface Descriptor{kind:string;capability?:DatasetCapability;macro?:string;owner?:boolean}
+const resourceUuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function deletePrewriteRejection(kind:string,error:unknown){return error instanceof ApiError&&(kind==='release.share.revoke'&&error.status===404&&['SHARE_NOT_FOUND','RELEASE_NOT_FOUND'].includes(error.code)||kind==='access.revoke'&&(error.status===404&&error.code==='COLLABORATOR_NOT_FOUND'||error.status===409&&error.code==='SETTINGS_CONFLICT'));}
 /** These local field-deletion guards execute before any Provider mutation. Do not generalize to other 409/422 operations. */
 function fieldDeletePrewriteRejection(kind:string,error:unknown):boolean{return kind==='dataset.fields.delete'&&error instanceof ApiError&&(error.status===422&&['DATASET_FIELD_DELETE_CONFIRM','DATASET_FIELD_DELETE_PROTECTED'].includes(error.code)||error.status===409&&error.code==='DATASET_VERSION_CONFLICT');}
 function globalFieldPrewriteRejection(kind:string,error:unknown):boolean{
@@ -61,11 +63,15 @@ function descriptor(url:string,method:string):Descriptor|undefined {
     [tail==='/push',{kind:'branch.push',capability:'data.edit'}],
     [tail==='/merge'||/^\/merge-requests\/:id\/merge$/.test(tail),{kind:'branch.merge',capability:'merge.execute',macro:'project.merged'}],
     [method==='POST'&&tail==='/branches',{kind:'branch.create',capability:'data.edit',macro:'project.branch_created'}],
+    [method==='DELETE'&&tail==='/workspaces/:id',{kind:'workspace.delete',capability:'data.edit'}],
+    [method==='DELETE'&&tail==='/access/:id',{kind:'access.revoke',capability:'project.admin'}],
+    [method==='DELETE'&&tail==='/labels/columns/:columnId',{kind:'annotation.column.delete',capability:'annotation.assign'}],
     [method==='POST'&&tail==='/releases',{kind:'release.create',capability:'release.manage',macro:'release.created'}],
     [method==='PATCH'&&tail==='/releases/:id',{kind:'release.update',capability:'release.manage',macro:'release.updated'}],
     [/^\/(?:releases|snapshots)\/:id\/build$/.test(tail),{kind:'release.build',capability:tail.startsWith('/snapshots')?'data.export':'release.manage'}],
     [tail==='/releases/:id/publish',{kind:'release.publish',capability:'release.manage',macro:'release.published'}],
     [tail==='/releases/:id/withdraw',{kind:'release.withdraw',capability:'release.manage',macro:'release.withdrawn'}],
+    [method==='DELETE'&&tail==='/releases/:id/shares/:shareId',{kind:'release.share.revoke',capability:'release.share',macro:'release.share_revoked'}],
     [tail==='/snapshots',{kind:'snapshot.build',capability:'data.export'}],
   ];
   return rules.find(([matches])=>matches)?.[1];
@@ -104,6 +110,7 @@ export interface OperationHttpServices {
   provider:Provider;access:RepositoryAccessService;journal:OperationJournal;audit:GlobalAuditService;
   resolveRef?:(request:FastifyRequest,fallback:string)=>Promise<string>;
   release?:(key:RepoKey,id:string,identity:RequestIdentity)=>Promise<any>;
+  releaseShares?:(key:RepoKey,id:string,identity:RequestIdentity)=>Promise<Array<{id:string;revokedAt?:string}>>;
   evaluationPolicy?:(key:RepoKey)=>Promise<{enabled:boolean;operationId?:string}>;
   afterMerged?:(key:RepoKey,ref:string,record:OperationRecord)=>Promise<void>;
   holdAsync?:()=>()=>void;
@@ -124,26 +131,30 @@ export function installOperationHttp(app:FastifyInstance,services:OperationHttpS
       else if(body.namespace&&(body.repo||body.name))key={namespace:safeSegment(body.namespace),repo:safeSegment(body.repo??body.name)};
       if(definition.owner&&identity.kind!=='owner')throw new ApiError(403,'OWNER_REQUIRED','仅实例管理员可创建项目。');
       if(key&&!definition.owner){if(definition.kind==='dataset.commit')await services.access.require(key,identity,'write');else await services.access.requireCapability(key,identity,definition.capability??'read');}
+      const resourceId=definition.kind==='release.share.revoke'?params.shareId:definition.kind==='access.revoke'?params.id:undefined;
+      if(resourceId!==undefined&&(typeof resourceId!=='string'||!resourceUuid.test(resourceId)))throw new ApiError(400,'OPERATION_RESOURCE_ID_INVALID','操作对象须为有效UUID。');
       const header=request.headers['x-operation-id']??request.headers['idempotency-key'];if(Array.isArray(header))throw new ApiError(400,'OPERATION_ID_INVALID','请提供单个操作标识。');
       const operationId=header??randomUUID();reply.header('X-Operation-Id',operationId);
       let ref=typeof(body.ref??body.branch??body.target)==='string'?safeRef(body.ref??body.branch??body.target):'main';
       if(services.resolveRef)ref=await services.resolveRef(request,ref);
       const expectedHead=typeof body.expectedCommit==='string'?safeRef(body.expectedCommit):undefined;
       const payload={method:request.method,route:route.url,params,query:request.query,body:request.body};
-      return services.journal.run({id:operationId,actorId:identity.id,actorName:identity.name,kind:definition.kind,...(key?{key}:{}),ref,...(expectedHead?{expectedHead}:{}),payload},async context=>{
+      try{return await services.journal.run({id:operationId,actorId:identity.id,actorName:identity.name,kind:definition.kind,...(key?{key}:{}),ref,...(expectedHead?{expectedHead}:{}),payload},async context=>{
         const execution:OperationExecutionContext={id:operationId,writeAttempted:false,checkpoint:context.checkpoint,defer:context.defer,complete:anchors=>services.journal.complete(operationId,anchors),uncertain:code=>services.journal.fail(operationId,code),holdAsync:services.holdAsync};
         active.add(operationId);
         try{return await operationContext.run(execution,async()=>{
           let value:unknown;
           if(definition.kind.startsWith('release.')&&typeof params.id==='string')await context.checkpoint({releaseId:params.id});
-          try{value=await original.call(this,request,reply);}catch(error){if(!execution.writeAttempted&&((error as any)?.validation||(error instanceof ApiError&&[400,401,403].includes(error.status))||(error as Error).name==='ZodError'||fieldDeletePrewriteRejection(definition.kind,error)||globalFieldPrewriteRejection(definition.kind,error)||releasePrewriteRejection(definition.kind,error)))context.confirmNotWritten();throw error;}
+          if(resourceId)await context.checkpoint({resourceId});
+          if(definition.kind==='workspace.delete')await context.checkpoint({workspaceId:params.id});
+          try{value=await original.call(this,request,reply);}catch(error){if(!execution.writeAttempted&&((error as any)?.validation||(error instanceof ApiError&&[400,401,403].includes(error.status))||(error as Error).name==='ZodError'||fieldDeletePrewriteRejection(definition.kind,error)||globalFieldPrewriteRejection(definition.kind,error)||releasePrewriteRejection(definition.kind,error)||deletePrewriteRejection(definition.kind,error)))context.confirmNotWritten();throw error;}
           const anchors=responseAnchors(value),result=object(value);
           await context.checkpoint(anchors);
           if(['queued','running','building','merging'].includes(result.status)||object(result.job).id||object(result.request).status==='merging')context.defer();
-          if(definition.macro)await services.audit.record({action:definition.macro,actor:identity,...(key?{repository:key}:{}),...(typeof(result.id??params.id)==='string'?{targetId:result.id??params.id}:{}),details:{operationId,branch:ref,...(anchors.commitId?{commitId:anchors.commitId}:{}),...(typeof result.totalRows==='number'?{sampleCount:result.totalRows}:{})}});
+          if(definition.macro)await services.audit.record({action:definition.macro,actor:identity,...(key?{repository:key}:{}),...(typeof(resourceId??result.id??params.id)==='string'?{targetId:resourceId??result.id??params.id}:{}),details:{operationId,branch:ref,...(anchors.commitId?{commitId:anchors.commitId}:{}),...(typeof result.totalRows==='number'?{sampleCount:result.totalRows}:{})}});
           return{value,anchors};
         });}finally{active.delete(operationId);}
-      });
+      });}finally{if(!reply.sent){try{reply.header('X-Operation-State',services.journal.get(operationId).state);}catch{/* An invalid or unaccepted operation has no durable result to advertise. */}}}
     };
   });
   const maySee=async(record:OperationRecord,identity:RequestIdentity)=>{if(identity.kind!=='owner'&&(record.actorId!==identity.id||!record.key))throw new ApiError(404,'OPERATION_NOT_FOUND','操作记录不存在。');if(record.key){await services.access.require(record.key,identity,'read');await services.sourceAccess?.requireSource(record.key,identity);}};
@@ -172,6 +183,10 @@ export async function reconcileOperation(record:OperationRecord,identity:Request
     return{state:'failed',reasonCode:'RELEASE_CREATE_PREWRITE_REJECTION_VERIFIED'};
   }
   if(record.kind==='dataset.evaluation_policy'&&services.evaluationPolicy){const policy=await services.evaluationPolicy(key);if(policy.enabled&&policy.operationId===record.id)return {state:'succeeded',reasonCode:'EVALUATION_POLICY_VERIFIED'};return unresolved('EVALUATION_POLICY_ANCHOR_REQUIRED');}
+  if(record.kind==='release.share.revoke'){
+    if(!anchors.releaseId||!anchors.resourceId||!resourceUuid.test(anchors.releaseId)||!resourceUuid.test(anchors.resourceId)||!services.releaseShares)return unresolved('SHARE_REVOCATION_ANCHOR_REQUIRED');
+    try{const shares=await services.releaseShares(key,anchors.releaseId,identity),target=shares.find(share=>share.id===anchors.resourceId);return target?.revokedAt?{state:'succeeded',reasonCode:'SHARE_REVOCATION_STATE_VERIFIED',anchors:{releaseId:anchors.releaseId,resourceId:anchors.resourceId}}:unresolved('SHARE_REVOCATION_NOT_PROVEN');}catch{return unresolved('SHARE_REVOCATION_READ_UNAVAILABLE');}
+  }
   if(anchors.releaseId&&services.release){
     const release=await services.release(key,anchors.releaseId,identity);
     if(['queued','building'].includes(release.status))return unresolved('BUILD_STILL_PENDING');

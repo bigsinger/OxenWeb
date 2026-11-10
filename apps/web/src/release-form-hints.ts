@@ -6,3 +6,4 @@ export function releaseFormSuggestions(releases:DatasetRelease[],name:string,bra
 }
 /** No mutation on mount; only explicit button/Tab action accepts a hint, preserving user input. */
 export function acceptReleaseHint(value:string,suggestion:string){return value===''?suggestion:value;}
+export function canAcceptReleaseHint(event:Pick<KeyboardEvent,'key'|'isComposing'|'shiftKey'|'altKey'|'ctrlKey'|'metaKey'>){return event.key==='Tab'&&!event.isComposing&&!event.shiftKey&&!event.altKey&&!event.ctrlKey&&!event.metaKey;}

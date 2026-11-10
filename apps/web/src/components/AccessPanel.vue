@@ -1,47 +1,90 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Check, Copy, KeyRound, LoaderCircle, Plus, ShieldCheck, Trash2, Users } from 'lucide-vue-next';
 import type { DatasetCapability, RepositoryAccessState, RepositoryRole, RepositoryTokenGrant } from '@oxen/shared';
-import { patch, post, remove, request } from '../api';
+import { type ApiError, patch, post, removeAndVerify, request, verifyDeletion } from '../api';
+import { credentialContext } from '../access-context';
+import { useAppStore } from '../stores/app';
 const props = defineProps<{ base: string; enabled?: boolean }>();
 const emit = defineEmits<{ changed: [] }>();
+const app = useAppStore();
 const state = ref<RepositoryAccessState | null>(null), loading = ref(false), busy = ref(false), error = ref('');
+const revokeErrors = ref<Record<string, ApiError>>({}), revocationNotice = ref(''), needsRefresh = ref(false);
+const contextKey = computed(() => JSON.stringify([props.base, props.enabled, credentialContext(app.status?.identity)]));
+const writesBlocked = computed(() => busy.value || loading.value || needsRefresh.value);
 const name = ref(''), role = ref<RepositoryRole>('viewer'), oneTimeToken = ref(''), copied = ref(false);
 const roles: { value: RepositoryRole; label: string }[] = [{ value: 'viewer', label: '只读 · Viewer' }, { value: 'annotator', label: '标注 · Annotator' }, { value: 'editor', label: '编辑与标注 · Editor' }, { value: 'reviewer', label: '复核 · Reviewer' }, { value: 'lead', label: '数据集负责人 · Lead' }, { value: 'admin', label: '项目管理 · Admin' }];
 const capabilities: {id:DatasetCapability;label:string}[]=[{id:'data.edit',label:'编辑样本正文'},{id:'dataset.assign',label:'填写项目标签'},{id:'annotation.assign',label:'填写样本 / 文件标签'},{id:'annotation.review',label:'独立复核'},{id:'tasks.manage',label:'分配任务'},{id:'schema.bind',label:'绑定已发布规范'},{id:'merge.execute',label:'执行合并'},{id:'release.manage',label:'管理 Release'},{id:'release.share',label:'创建分享'},{id:'release.hidden',label:'受限主库及隐藏评测访问（谨慎授予）'},{id:'data.export',label:'导出数据'},{id:'project.admin',label:'项目权限管理'}];
 const memberCapabilities=ref<Record<string,DatasetCapability[]>>({});
 const roleDefaults:Record<RepositoryRole,DatasetCapability[]>={viewer:['read','data.export'],annotator:['read','annotation.assign','data.export'],editor:['read','data.edit','annotation.assign','data.export'],reviewer:['read','annotation.review','data.export'],lead:['read','dataset.assign','tasks.manage','schema.bind','merge.execute','release.manage','release.share','data.export'],admin:['read',...capabilities.map(item=>item.id)]};
-let sequence = 0;
+let sequence = 0, contextVersion = 0, mounted = true;
+function applyPolicy(value: RepositoryAccessState) { state.value = value; memberCapabilities.value = Object.fromEntries(value.collaborators.map(member => [member.id, [...(member.capabilities ?? roleDefaults[member.role])]])); needsRefresh.value = false; }
 async function load() {
   if (props.enabled === false) return;
-  const current = ++sequence; loading.value = true; error.value = '';
-  try { const value = await request<RepositoryAccessState>(props.base + '/access'); if (current === sequence) {state.value = value;memberCapabilities.value=Object.fromEntries(value.collaborators.map(member=>[member.id,[...(member.capabilities??roleDefaults[member.role])]]));} }
-  catch (cause) { if (current === sequence) error.value = (cause as Error).message; }
-  finally { if (current === sequence) loading.value = false; }
+  const current = ++sequence, context = contextKey.value, isCurrent = () => mounted && current === sequence && context === contextKey.value; loading.value = true; error.value = '';
+  try {
+    const value = await request<RepositoryAccessState>(props.base + '/access'); if (!isCurrent()) return;
+    applyPolicy(value);
+    for (const [id, failure] of Object.entries(revokeErrors.value)) {
+      const outcome = await verifyDeletion(failure, { readCurrent: async () => value, isRemoved: policy => !policy.collaborators.some(member => member.id === id), isCurrent });
+      if (!isCurrent()) return;
+      if (outcome.state === 'confirmed') { delete revokeErrors.value[id]; revocationNotice.value = '已从最新访问策略核对，该协作者的令牌已不存在。'; }
+    }
+  }
+  catch (cause) { if (isCurrent()) { error.value = (cause as Error).message; needsRefresh.value = true; } }
+  finally { if (isCurrent()) loading.value = false; }
 }
 async function grant() {
-  busy.value = true; error.value = ''; copied.value = false; oneTimeToken.value = '';
+  if (writesBlocked.value || !state.value) return;
+  const context = contextKey.value, generation = contextVersion, base = props.base, isCurrent = () => mounted && generation === contextVersion && context === contextKey.value;
+  busy.value = true; error.value = ''; revocationNotice.value = ''; copied.value = false; oneTimeToken.value = '';
   try {
-    const value = await post<RepositoryTokenGrant>(props.base + '/access', { name: name.value.trim(), role: role.value, expectedCommit: state.value?.commitId });
+    const value = await post<RepositoryTokenGrant>(base + '/access', { name: name.value.trim(), role: role.value, expectedCommit: state.value.commitId });
+    if (!isCurrent()) return;
     oneTimeToken.value = value.token; name.value = ''; await load(); emit('changed');
-  } catch (cause) { error.value = (cause as Error).message; }
-  finally { busy.value = false; }
+  } catch (cause) { if (isCurrent()) { error.value = (cause as Error).message; needsRefresh.value = true; } }
+  finally { if (isCurrent()) busy.value = false; }
 }
 async function update(id: string, value: string) {
-  busy.value = true; error.value = '';
-  try { await patch(props.base + '/access/' + encodeURIComponent(id), { role: value, expectedCommit: state.value?.commitId }); await load(); emit('changed'); }
-  catch (cause) { error.value = (cause as Error).message; }
-  finally { busy.value = false; }
+  if (writesBlocked.value || !state.value || revokeErrors.value[id]) return;
+  const context = contextKey.value, generation = contextVersion, base = props.base, isCurrent = () => mounted && generation === contextVersion && context === contextKey.value;
+  busy.value = true; error.value = ''; revocationNotice.value = '';
+  try { await patch(base + '/access/' + encodeURIComponent(id), { role: value, expectedCommit: state.value.commitId }); if (isCurrent()) { await load(); emit('changed'); } }
+  catch (cause) { if (isCurrent()) { error.value = (cause as Error).message; needsRefresh.value = true; } }
+  finally { if (isCurrent()) busy.value = false; }
 }
-async function revoke(id: string) {
-  busy.value = true; error.value = '';
-  try { await remove(props.base + '/access/' + encodeURIComponent(id) + '?expectedCommit=' + encodeURIComponent(state.value?.commitId ?? '')); await load(); emit('changed'); }
-  catch (cause) { error.value = (cause as Error).message; }
-  finally { busy.value = false; }
+async function revoke(id: string, recheck = false) {
+  const member = state.value?.collaborators.find(item => item.id === id), previous = revokeErrors.value[id];
+  if (!member || busy.value || (!recheck && (writesBlocked.value || previous)) || (recheck && !previous)) return;
+  const context = contextKey.value, generation = contextVersion, base = props.base, commitId = state.value?.commitId, isCurrent = () => mounted && generation === contextVersion && context === contextKey.value;
+  if (!recheck && !await app.confirmAction(`撤销 ${member.name} 的项目访问令牌？该令牌及其登录会话将立即失效。`, { title: '撤销项目访问', confirmLabel: '确认撤销' })) return;
+  if (!isCurrent() || busy.value || (!recheck && state.value?.commitId !== commitId)) return;
+  busy.value = true; error.value = ''; revocationNotice.value = '';
+  const verification = { readCurrent: () => request<RepositoryAccessState>(base + '/access'), isRemoved: (policy: RepositoryAccessState) => !policy.collaborators.some(item => item.id === id), isCurrent };
+  try {
+    const outcome = recheck && previous ? await verifyDeletion(previous, verification) : await removeAndVerify(base + '/access/' + encodeURIComponent(id) + '?expectedCommit=' + encodeURIComponent(commitId ?? ''), verification);
+    if (!isCurrent()) return;
+    if (outcome.state === 'unknown') { revokeErrors.value[id] = outcome.error; error.value = '撤销结果尚未确认，已暂停对此令牌重复撤销。请核对最新访问策略。' + (outcome.verificationError ? ` ${outcome.verificationError.message}` : ''); return; }
+    delete revokeErrors.value[id]; revocationNotice.value = outcome.via === 'read' ? '已从最新访问策略核对，该协作者的令牌已不存在。' : '协作者访问令牌已撤销。';
+    if (outcome.current) applyPolicy(outcome.current);
+    else if (state.value) { state.value = { ...state.value, collaborators: state.value.collaborators.filter(item => item.id !== id) }; needsRefresh.value = true; await load(); }
+    if (!isCurrent()) return;
+    app.notify(revocationNotice.value); emit('changed');
+  }
+  catch (cause) { if (isCurrent()) { error.value = (cause as Error).message; needsRefresh.value = true; } }
+  finally { if (isCurrent()) busy.value = false; }
 }
-async function saveCapabilities(id:string,memberRole:RepositoryRole){busy.value=true;error.value='';try{await patch(props.base+'/access/'+encodeURIComponent(id),{role:memberRole,capabilities:memberCapabilities.value[id],expectedCommit:state.value?.commitId});await load();emit('changed');}catch(cause){error.value=(cause as Error).message;}finally{busy.value=false;}}
+async function saveCapabilities(id: string, memberRole: RepositoryRole) {
+  if (writesBlocked.value || !state.value || revokeErrors.value[id]) return;
+  const context = contextKey.value, generation = contextVersion, base = props.base, isCurrent = () => mounted && generation === contextVersion && context === contextKey.value;
+  busy.value = true; error.value = ''; revocationNotice.value = '';
+  try { await patch(base + '/access/' + encodeURIComponent(id), { role: memberRole, capabilities: memberCapabilities.value[id], expectedCommit: state.value.commitId }); if (isCurrent()) { await load(); emit('changed'); } }
+  catch (cause) { if (isCurrent()) { error.value = (cause as Error).message; needsRefresh.value = true; } }
+  finally { if (isCurrent()) busy.value = false; }
+}
 async function copy() { try { await navigator.clipboard.writeText(oneTimeToken.value); copied.value = true; } catch { error.value = '无法自动复制，请手动选中并复制令牌。'; } }
-watch(() => [props.base, props.enabled], () => { oneTimeToken.value = ''; copied.value = false; void load(); }, { immediate: true });
+watch(contextKey, () => { ++contextVersion; ++sequence; busy.value = false; loading.value = false; state.value = null; error.value = ''; revokeErrors.value = {}; revocationNotice.value = ''; needsRefresh.value = false; oneTimeToken.value = ''; copied.value = false; void load(); }, { immediate: true, flush: 'sync' });
+onBeforeUnmount(() => { mounted = false; ++sequence; oneTimeToken.value = ''; });
 </script>
 <template>
   <article class="panel access-card" aria-label="协作访问控制">
@@ -50,17 +93,19 @@ watch(() => [props.base, props.enabled], () => { oneTimeToken.value = ''; copied
       <p v-if="enabled!==false" class="notice">在<RouterLink to="/access">全局访问管理</RouterLink>为已有人员发放项目令牌、设置到期时间；在<RouterLink to="/account/tokens">我的访问令牌</RouterLink>核对已发放的摘要、轮换和撤销。项目成员的角色与独立能力仍可在下方维护。</p><p v-if="enabled === false" class="muted">仅仓库管理员可以管理成员与令牌。</p>
       <template v-else>
         <details class="access-note"><summary>本地身份与权限说明</summary><p>协作者使用独立令牌登录，访问策略由此 Web 服务执行，不修改 Oxen 云端权限。<span v-if="state?.localOwnerEnabled">当前为本机所有者兼容模式；协作者应使用自己的令牌。</span></p></details>
+        <p v-if="revocationNotice" class="notice" role="status">{{ revocationNotice }}</p>
+        <p v-if="needsRefresh && state" class="notice" role="status">请重新加载最新访问策略后再做权限变更，避免使用旧版本覆盖。<button class="btn btn-ghost" type="button" :disabled="loading || busy" @click="load">重新加载</button></p>
         <p v-if="error" class="error-state" role="alert">{{ error }} <button class="btn btn-ghost" type="button" @click="load">重新加载</button></p>
         <p v-if="loading && !state" class="muted" role="status"><LoaderCircle class="spinning" :size="16" /> 正在加载访问策略…</p>
         <template v-if="state">
-          <form class="grant-form" @submit.prevent="grant"><label>协作者名称<input v-model="name" class="field" placeholder="例如 数据审核员" maxlength="120" required :disabled="busy" /></label><label>权限<select v-model="role" class="field" :disabled="busy"><option v-for="option in roles" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><button class="btn btn-primary" :disabled="busy || !name.trim()"><LoaderCircle v-if="busy" class="spinning" :size="15" /><Plus v-else :size="15" />创建令牌</button></form>
+          <form class="grant-form" @submit.prevent="grant"><label>协作者名称<input v-model="name" class="field" placeholder="例如 数据审核员" maxlength="120" required :disabled="writesBlocked" /></label><label>权限<select v-model="role" class="field" :disabled="writesBlocked"><option v-for="option in roles" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><button class="btn btn-primary" :disabled="writesBlocked || !name.trim()"><LoaderCircle v-if="busy" class="spinning" :size="15" /><Plus v-else :size="15" />创建令牌</button></form>
           <div class="owner-row"><ShieldCheck :size="17" /><strong>实例所有者</strong><span>始终拥有管理权限</span></div>
           <div v-if="!state.collaborators.length" class="access-empty">还没有协作者。创建令牌后，由你自行交给对应使用者。</div>
           <div v-for="member in state.collaborators" :key="member.id" class="member-row">
             <div class="member-name"><strong>{{ member.name }}</strong><small class="mono">{{ member.id }}</small></div>
-            <select class="field" :value="member.role" :aria-label="`${member.name}的权限`" :disabled="busy" @change="update(member.id, ($event.target as HTMLSelectElement).value)"><option v-for="option in roles" :key="option.value" :value="option.value">{{ option.label }}</option></select>
-            <button type="button" class="btn revoke" :disabled="busy" :aria-label="`撤销${member.name}的访问令牌`" @click="revoke(member.id)"><Trash2 :size="15" />撤销</button>
-            <details class="member-capabilities"><summary>独立能力</summary><fieldset :disabled="busy"><label v-for="capability in capabilities" :key="capability.id"><input v-model="memberCapabilities[member.id]" type="checkbox" :value="capability.id"/>{{capability.label}}</label><button class="btn" type="button" @click="saveCapabilities(member.id,member.role)">保存能力</button></fieldset></details>
+            <select class="field" :value="member.role" :aria-label="`${member.name}的权限`" :disabled="writesBlocked || !!revokeErrors[member.id]" @change="update(member.id, ($event.target as HTMLSelectElement).value)"><option v-for="option in roles" :key="option.value" :value="option.value">{{ option.label }}</option></select>
+            <button v-if="revokeErrors[member.id]" type="button" class="btn" :disabled="busy || loading" :aria-label="`核对${member.name}的撤销结果`" @click="revoke(member.id, true)">核对撤销结果</button><button v-else type="button" class="btn revoke" :disabled="writesBlocked" :aria-label="`撤销${member.name}的访问令牌`" @click="revoke(member.id)"><Trash2 :size="15" />撤销</button><p v-if="revokeErrors[member.id]" class="notice" role="status">撤销结果尚未确认，未自动重复撤销。核对操作只读取当前状态。</p>
+            <details class="member-capabilities"><summary>独立能力</summary><fieldset :disabled="writesBlocked || !!revokeErrors[member.id]"><label v-for="capability in capabilities" :key="capability.id"><input v-model="memberCapabilities[member.id]" type="checkbox" :value="capability.id"/>{{capability.label}}</label><button class="btn" type="button" @click="saveCapabilities(member.id,member.role)">保存能力</button></fieldset></details>
           </div>
 
           <p class="role-help">标注、正文编辑、复核、任务和发布可独立授权。项目管理不授予组织规范维护权；规范维护者由实例管理员在首页“标签管理”指定。</p>

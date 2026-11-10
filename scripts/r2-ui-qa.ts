@@ -8,6 +8,7 @@ import { sha256, storedZip } from '../apps/server/src/zip-io.js';
 import {InstanceRuntime} from '../apps/server/src/instance-runtime.js';
 import {ApiError} from '../apps/server/src/errors.js';
 import {requestIdentity} from '../apps/server/src/auth.js';
+import {seedR22ReleaseBrowserFixtures} from './r22-ui-release-fixture.js';
 
 const generation=['r3','r4','r5','r6','r7','r8','r9','r10'].includes(process.env.QA_GENERATION??'')?process.env.QA_GENERATION!:'r2';
 const folder = path.join(projectRoot, '.data/'+generation+'-ui-qa');
@@ -45,7 +46,7 @@ app.addHook('onRequest',async request=>{const endpoint=request.url.split('?')[0]
 app.get('/api/qa/metrics',async()=>({...qaMetrics}));
 const base = '/api/repos/local/ai-safety-ui-qa';
 if(generation!=='r2'){
-  const check=async(method:'GET'|'POST',url:string,payload?:unknown)=>{const result=await app.inject({method,url,headers:{'x-oxen-request':'web'},...(payload===undefined?{}:{payload})});if(result.statusCode>=300)throw new Error(result.body);return result.json();};
+  const check=async(method:'GET'|'POST',url:string,payload?:object)=>{const result=await app.inject({method,url,headers:{'x-oxen-request':'web'},...(payload===undefined?{}:{payload})});if(result.statusCode>=300)throw new Error(result.body);return result.json();};
   const schema=await check('GET',base+'/schema?ref=main');
   if(schema.binding?.version!==2){
     const layers:Record<string,unknown>={};
@@ -66,6 +67,7 @@ if (!state.policy.collaborators.length) {
   }
   await mkdir(folder, { recursive: true }); await writeFile(path.join(folder, 'actors.json'), JSON.stringify(actors), { mode: 0o600 });
 }
+if(generation==='r10')await seedR22ReleaseBrowserFixtures(app,provider);
 await app.listen({ host: config.host, port: config.port });
 process.stdout.write('Synthetic '+generation.toUpperCase()+' QA BFF ready at http://127.0.0.1:3005\n');
 const stop = async () => { await app.close(); process.exit(0); };

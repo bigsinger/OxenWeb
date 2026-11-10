@@ -2,46 +2,125 @@
   "snapshotDate": "2026-11-08",
   "timezone": "Asia/Shanghai",
   "currentLocal": {
-    "revision": "R21",
+    "revision": "R22",
     "date": "2026-11-10",
-    "classification": "Local extensions only; no new SaaS observations",
+    "classification": "Approved local UX01–UX11 improvements only; no new SaaS observations, business features, Oxen kernel or OpenAPI changes",
+    "approvedReview": "../../review-ux-r21.md",
     "userGuide": "../../user-guide.md",
-    "implementation": "../../implementation-r21.md",
-    "implementationRecordStatus": "completed",
+    "implementation": "../../implementation-r22.md",
+    "implementationRecordStatus": "pending-main-task-summary",
+    "implementationDetails": [
+      "../../r22-release-ui.md",
+      "../../r22-delete-outcomes.md",
+      "../../r22-table-focus.md"
+    ],
     "publishingPolicy": "Only the latest published complete dataset per project remains; old release records, assets and share links are deleted. Source branches and commit history remain. No old publishing compatibility, views or templates.",
     "components": [
       "apps/web/src/components/ReleasesPanel.vue",
-      "apps/server/src/releases.ts",
-      "apps/server/src/release-retention.ts",
-      "apps/server/src/source-access-markers.ts"
+      "apps/web/src/release-requests.ts",
+      "apps/web/src/release-form-hints.ts",
+      "apps/web/src/components/DatasetWorkbench.vue",
+      "apps/web/src/dataset-cell-focus.ts",
+      "apps/web/src/views/RepositoryView.vue",
+      "apps/web/src/lazy-repository-panel.ts",
+      "apps/web/src/api.ts",
+      "apps/server/src/operation-http.ts",
+      "apps/server/src/operation-journal.ts",
+      "apps/web/src/components/WorkspacePanel.vue",
+      "apps/web/src/components/AccessPanel.vue"
     ],
-    "copiedRootRehearsal": {
-      "passed": true,
-      "removedRecords": 5,
-      "removedFiles": 9,
-      "removedBytes": 15446673,
-      "scope": "Isolated copy of the managed release root"
-    },
-    "deploymentAcceptance": {
-      "startupPassed": true,
-      "removedReleaseRecords": 2,
-      "removedOldSnapshotRecords": 3,
-      "removedFiles": 9,
-      "removedBytes": 15446673,
-      "removedShares": 0,
-      "activeRecordsAfter": 0,
-      "pendingCleanupAfter": 0,
-      "oldArtifactFoldersAbsent": true,
-      "currentFormatPublicationsBefore": 0,
-      "sourceDigestComparison": "All four main commits, canonical bytes and SHA256, and private-draft SHA256 unchanged",
-      "publicEvidenceSummary": "../../evidence/r21/verification.json"
+    "automatedAcceptance": {
+      "typecheckPassed": true,
+      "isolatedWebBuildPassed": true,
+      "isolatedServerBuildPassed": true,
+      "full": {
+        "total": 583,
+        "passed": 576,
+        "conditionalSkipped": 7,
+        "failed": 0,
+        "localLog": ".data/r22-full-tests-release.log"
+      },
+      "deleteFocused": {
+        "total": 12,
+        "passed": 12,
+        "failed": 0,
+        "localLog": ".data/r22-delete-transport-retry.log"
+      }
     },
     "officialNativeAcceptance": {
       "passed": true,
       "version": "0.67.0",
-      "isolatedPort": 3008
+      "isolatedPort": 3008,
+      "stoppedAfterTest": true,
+      "productionTouched": false,
+      "receipt": ".data/r22-native-release-acceptance.json"
     },
-    "browserAcceptance": {"passed": true, "syntheticOnly": true, "narrowWidth": 390, "publishReplacement": true, "duplicateVersionPreservesInput": true, "downloadAttempted": false},
+    "browserAcceptance": {
+      "status": "partial-final-build-recheck-pending",
+      "syntheticOnly": true,
+      "initialQaOrigin": "http://127.0.0.1:3013",
+      "confirmed": [
+        "Enter unchanged source returns focus to original prompt cell",
+        "Esc returns focus to original messages cell",
+        "Invalid JSON stays in editor until Esc",
+        "Current-published filter does not hide ready work snapshots after tab switch",
+        "No-match state offers clear filters",
+        "Successful candidate POST followed by GET503 retains returned ID and manual notes",
+        "Read retry records one create, one build and zero canonical writes",
+        "Final publish confirmation can be cancelled without losing state"
+      ],
+      "deleteTransportRetry": {
+        "observedUiFetches": 1,
+        "observedBackendRequests": 2,
+        "actualRevocations": 1,
+        "sameOperationId": true,
+        "originalContradictoryFeedback": "Observed; not marked passed",
+        "strictReceiptFixUnitPassed": true,
+        "requiresMatchingOutboundAndResponseOperationId": true,
+        "requiresErrorCode": "OPERATION_ALREADY_SUCCEEDED",
+        "requiresOperationState": "succeeded",
+        "appliesTo": "DELETE only",
+        "finalBrowserRecheck": "pending"
+      },
+      "knownScreenshot": "../../evidence/r22/confirmed-save-readback-failure.png",
+      "finalSafeQaPorts": [
+        3015,
+        3016
+      ],
+      "finalSafeQaStatus": "pending"
+    },
+    "performance": {
+      "status": "initial-payload-measured-final-build-reprofile-pending",
+      "repositoryChunkBeforeBytes": 500946,
+      "initialR22RepositoryChunkBytes": 81212,
+      "overviewInitialJsBeforeBytes": 683208,
+      "initialR22OverviewInitialJsBytes": 261721,
+      "warmMedianMs": {
+        "before": {
+          "overview": 240,
+          "table": 246,
+          "releases": 240
+        },
+        "initialR22": {
+          "overview": 219,
+          "table": 254,
+          "releases": 238
+        }
+      },
+      "caveat": "Warm measurements include tool overhead and use different ports/proxy paths; no reliable speedup claim."
+    },
+    "remoteCiAcceptance": {
+      "status": "pending"
+    },
+    "deploymentAcceptance": {
+      "status": "pending",
+      "productionStoppedByQaRestart": false
+    },
+    "harnessLimitations": [
+      "Old QA static refresh failed because wildcard:false prevents wildcard route discovery; harness issue, not product pass",
+      "Old QA restart was rejected by automatic approval; no actual production stop",
+      "New immutable isolated QA will provide final fresh-build validation"
+    ],
     "r11DownloadHandoff": "Superseded by the user's delete-all-old-publications requirement; browser download was not completed and is not marked passed. Historical approval-block records remain."
   },
   "scope": "Original data management and collaboration, JSONL, local custom labels",
@@ -217,5 +296,57 @@
   "r19EvidenceDirectory": "../../evidence/r19/",
   "r20LocalImplementation": "../../implementation-r20.md",
   "r20PublishingUi": "../../r20-simple-publishing-ui.md",
-  "r20EvidenceDirectory": "../../evidence/r20/"
+  "r20EvidenceDirectory": "../../evidence/r20/",
+  "localHistory": [
+    {
+      "revision": "R21",
+      "date": "2026-11-10",
+      "classification": "Local extensions only; no new SaaS observations",
+      "userGuide": "../../user-guide.md",
+      "implementation": "../../implementation-r21.md",
+      "implementationRecordStatus": "completed",
+      "publishingPolicy": "Only the latest published complete dataset per project remains; old release records, assets and share links are deleted. Source branches and commit history remain. No old publishing compatibility, views or templates.",
+      "components": [
+        "apps/web/src/components/ReleasesPanel.vue",
+        "apps/server/src/releases.ts",
+        "apps/server/src/release-retention.ts",
+        "apps/server/src/source-access-markers.ts"
+      ],
+      "copiedRootRehearsal": {
+        "passed": true,
+        "removedRecords": 5,
+        "removedFiles": 9,
+        "removedBytes": 15446673,
+        "scope": "Isolated copy of the managed release root"
+      },
+      "deploymentAcceptance": {
+        "startupPassed": true,
+        "removedReleaseRecords": 2,
+        "removedOldSnapshotRecords": 3,
+        "removedFiles": 9,
+        "removedBytes": 15446673,
+        "removedShares": 0,
+        "activeRecordsAfter": 0,
+        "pendingCleanupAfter": 0,
+        "oldArtifactFoldersAbsent": true,
+        "currentFormatPublicationsBefore": 0,
+        "sourceDigestComparison": "All four main commits, canonical bytes and SHA256, and private-draft SHA256 unchanged",
+        "publicEvidenceSummary": "../../evidence/r21/verification.json"
+      },
+      "officialNativeAcceptance": {
+        "passed": true,
+        "version": "0.67.0",
+        "isolatedPort": 3008
+      },
+      "browserAcceptance": {
+        "passed": true,
+        "syntheticOnly": true,
+        "narrowWidth": 390,
+        "publishReplacement": true,
+        "duplicateVersionPreservesInput": true,
+        "downloadAttempted": false
+      },
+      "r11DownloadHandoff": "Superseded by the user's delete-all-old-publications requirement; browser download was not completed and is not marked passed. Historical approval-block records remain."
+    }
+  ]
 }
