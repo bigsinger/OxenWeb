@@ -118,6 +118,16 @@
   "ready": true,
   "acceptsWrites": true,
   "pendingReconciliation": false,
+  "githubCi": {
+    "testedCommit": "e54d228d7a1a9530017b625a891c4edc0a632396",
+    "url": "https://github.com/bigsinger/OxenWeb/actions/runs/42769201316",
+    "conclusion": "success",
+    "attempt": 1,
+    "verify": "success: 551 total, 544 passed, 7 conditional skips, 0 failed",
+    "nativeContract": "success: official Oxen 0.67.0 on Linux",
+    "browser": {"passed": 5, "failed": 0, "seconds": 12.8, "actualSyntheticUpload": true, "actualSnapshotDownloadToFile": true, "zipChecksumsVerified": true, "systemActivityColumnsExcluded": true},
+    "priorFailedRun": {"url": "https://github.com/bigsinger/OxenWeb/actions/runs/42768151282", "browserPassed": 3, "browserFailed": 2, "reason": "Obsolete UI scenario targeting an overlaid cell and not waiting for workbench restoration; corrected selectors and required snapshot confirmation, without product changes or skipped assertions"}
+  },
   "credentialsIncluded": false,
   "privateRowsIncluded": false
 }
