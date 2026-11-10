@@ -36,7 +36,12 @@ export interface Provider {
   workspaceFile(key: RepoKey, id: string, path: string): Promise<FilePreview>;
   deleteWorkspace(key: RepoKey, id: string): Promise<void>;
   writeWorkspace(key: RepoKey, id: string, path: string, content: Buffer): Promise<WorkspaceItem>;
-  commitWorkspace(key: RepoKey, id: string, message: string, expectedCommit?: string): Promise<CommitItem>;
+  /** Fixed OpenAPI staging removal; never rewrites existing commit history. */
+  removeWorkspaceFiles?(key:RepoKey,id:string,paths:string[]):Promise<void>;
+  rawWorkspaceFile?(key:RepoKey,id:string,path:string):Promise<FileContent>;
+  /** Optional provider-local atomic staging; pinned HTTP providers keep per-file writes. */
+  writeWorkspaceBatch?(key:RepoKey,id:string,files:ReadonlyArray<{path:string;content:Buffer}>):Promise<WorkspaceItem>;
+  commitWorkspace(key: RepoKey, id: string, message: string, expectedCommit?: string,beforeWrite?:()=>Promise<void>): Promise<CommitItem>;
   annotations(key: RepoKey, path?: string, ref?: string): Promise<Annotation[]>;
   legacyAnnotations?(key: RepoKey, ref: string): Promise<Annotation[]>;
   annotate(key: RepoKey, input: Omit<Annotation, 'id' | 'author' | 'updatedAt'>, ref?: string): Promise<Annotation>;

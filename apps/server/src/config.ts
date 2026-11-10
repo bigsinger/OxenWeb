@@ -18,6 +18,8 @@ export interface Config {
   namespaces: string[];
   projectRoot: string;
   allowedHosts: string[];
+  /** Team deployments must never enable the implicit loopback owner identity. */
+  teamMode: boolean;
 }
 
 function findProjectRoot(): string {
@@ -41,6 +43,7 @@ export function loadConfig(env = process.env): Config {
     OXEN_SERVER_URL: z.string().url().refine(value => { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash; }, 'Use an HTTP(S) server URL without inline credentials, query, or fragment.').optional(),
     OXEN_AUTH_TOKEN: z.string().optional(),
     BFF_TOKEN: z.string().min(16).optional(),
+    BFF_TEAM_MODE: z.enum(['true','false']).default('false'),
     OXEN_CLI_ROOT: z.string().default('.data/clones'),
     OXEN_CLI_BIN: z.string().default('oxen'),
     OXEN_CLI_TIMEOUT_MS: z.coerce.number().int().min(100).max(3_600_000).default(120_000),
@@ -51,6 +54,7 @@ export function loadConfig(env = process.env): Config {
   if (!['127.0.0.1', 'localhost', '::1'].includes(schema.HOST) && !schema.BFF_TOKEN) {
     throw new Error('BFF_TOKEN (at least 16 characters) is required when binding a non-loopback interface.');
   }
+  if(schema.BFF_TEAM_MODE==='true'&&!schema.BFF_TOKEN)throw new Error('BFF_TOKEN is required in BFF_TEAM_MODE; implicit local owner access is disabled.');
   return {
     host: schema.HOST, port: schema.PORT, demo: schema.DEMO_MODE === 'true', demoFile: path.resolve(projectRoot, schema.DEMO_DATA_FILE),
     upstream: schema.OXEN_SERVER_URL?.replace(/\/$/, ''), upstreamToken: schema.OXEN_AUTH_TOKEN,
@@ -59,5 +63,6 @@ export function loadConfig(env = process.env): Config {
     namespaces: schema.OXEN_NAMESPACES.split(',').map(s => s.trim()).filter(Boolean),
     projectRoot,
     allowedHosts: schema.BFF_ALLOWED_HOSTS.split(',').map(host => host.trim().toLowerCase().replace(/^\[|\]$/g, '')).filter(Boolean),
+    teamMode:schema.BFF_TEAM_MODE==='true',
   };
 }

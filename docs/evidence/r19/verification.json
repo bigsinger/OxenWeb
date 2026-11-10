@@ -1,0 +1,97 @@
+{
+  "version": "1.1",
+  "verifiedAt": "2026-11-09T16:33:45.731Z",
+  "tests": {
+    "total": 570,
+    "passed": 563,
+    "failed": 0,
+    "conditionalSkipped": 7
+  },
+  "typecheck": true,
+  "isolatedStageBuild": true,
+  "controlledDeployment": {
+    "passed": true,
+    "completedAt": "2026-11-09T16:32:11.067Z",
+    "builds": [
+      {
+        "name": "server",
+        "sha256": "02e880e5909700fcb1d3a44fb2e30d80761e3891766da7bc5b01650ffacde801"
+      },
+      {
+        "name": "web",
+        "sha256": "522406766951643b9fd75ea30fbf84f2d599f8087b261d9884d87dea3955ad0a"
+      }
+    ],
+    "upstreamLeftRunning": true
+  },
+  "health": {
+    "ready": true,
+    "acceptsWrites": true,
+    "pendingReconciliation": false
+  },
+  "realData": {
+    "projects": 4,
+    "headsCanonicalBytesAndPrivateDraftDigestsUnchanged": true,
+    "realProjectsWithoutAutoMigration": 4
+  },
+  "nativeAcceptance": {
+    "passed": true,
+    "version": "1.1",
+    "project": {
+      "namespace": "local",
+      "repo": "r19-publishing-mw9ha3tr"
+    },
+    "rows": 8,
+    "viewRows": {
+      "golden": 2,
+      "regression": 2,
+      "public": 5,
+      "holdout": 2
+    },
+    "standardReleaseId": "7018fc81-d704-43aa-9214-a9f40d81ff3b",
+    "standardAssets": 5,
+    "csvReleaseId": "21ed5028-ea54-48cc-9e4e-1b6c6d0d7b5a",
+    "parquetReleaseId": "9f89c43a-6156-4375-aa2f-94d0f9f6851e",
+    "publicSnapshotId": "408e3294-51c7-4475-a7c1-42cc321666b5",
+    "publicSnapshotRows": 5,
+    "customTemplateReleaseId": "e201224f-1140-4da0-9a16-0cf1ce91b1f0",
+    "legacyReleaseId": "ac42503f-e6db-41ed-b3a8-f2c0b4d0c7dc",
+    "sourceSha256": "bb1b8dc7d670e59f2bda14eaf7be2113d5813f0dd769f9cc0d0fd54e089dcc07",
+    "sourceBytesAndIdsUnchanged": true,
+    "noSamplePartitionColumnsAdded": true,
+    "hiddenDataNeverExported": true,
+    "hashManifestPublicReadable": true,
+    "consumerBodyDenied": true,
+    "cookieEvaluationDenied": true,
+    "controlledBearerEvaluationAudited": true,
+    "systemTemplatesImmutable": true,
+    "instanceTemplateResetAndSaveAs": true,
+    "temporaryOverridesIsolated": true,
+    "deletedTemplateReleaseRetained": true,
+    "parquetIndependentReaderPassed": true,
+    "legacyUnconfiguredInternalOnly": true,
+    "originalArchivesExecuted": false,
+    "browserDownloadAttempted": false,
+    "productionTouched": false,
+    "completedAt": "2026-11-09T16:31:29.484Z",
+    "official": "0.67.0",
+    "nativePort": 3008
+  },
+  "browser": {
+    "isolatedSynthetic": true,
+    "systemReadOnly": true,
+    "customTemplateSaved": true,
+    "invalidFilterRejected": true,
+    "physicalCountAndHashOnly": true,
+    "csvReleasePublishedAndSetLatest": true,
+    "publicSnapshotTwoAssets": true,
+    "legacyNoViewsInternalNotice": true,
+    "narrow390": true,
+    "productionTemplatesReadOnlySmoke": true,
+    "browserDownloadAttempted": false,
+    "originalR11DownloadHandoffPreserved": true
+  },
+  "fullProductionColdBackupRepeated": false,
+  "offsiteRecoveryClaimed": false,
+  "credentialsIncluded": false
+}

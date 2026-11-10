@@ -20,3 +20,47 @@ jobs:
       - run: git diff --exit-code -- packages/contracts/src
       - run: npm run build
       - run: npm test
+  native-contract:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run oxen:install
+      - run: npm run oxen:start
+      - run: npm run oxen:seed
+      - name: Official Oxen synthetic identity and permissions regression
+        run: npx tsx --test apps/server/test/settings-access.test.ts
+        env:
+          OXEN_SETTINGS_LIVE_TEST: 'true'
+      - name: Stop only this runner's managed Oxen
+        if: always()
+        run: npm run oxen:stop
+  browser:
+    needs: [verify, native-contract]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Actual UI upload, download and editor regression
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-browser-regression
+          path: |
+            .data/e2e-report/
+            .data/e2e-results/
+          if-no-files-found: ignore
+          retention-days: 14

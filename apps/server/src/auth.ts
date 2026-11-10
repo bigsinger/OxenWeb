@@ -31,6 +31,7 @@ export function installAuth(app: FastifyInstance, config: Config): AuthControlle
   const cookieName = 'oxen_session';
   let resolver: TokenIdentityResolver | undefined;
   let publicReads = false;
+  const teamMode='teamMode' in config&&config.teamMode===true;
   const cookie = (request: FastifyRequest) => request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1);
   const resolveToken = async (token: string): Promise<RequestIdentity | undefined> => {
     if (config.token && equal(token, config.token)) return owner('bearer');
@@ -45,13 +46,13 @@ export function installAuth(app: FastifyInstance, config: Config): AuthControlle
     const id = cookie(request);
     if (id) {
       const session = sessions.get(id);
-      if (!session || session.expiry <= Date.now() || (session.identity.kind === 'collaborator' && !await resolver?.active(session.identity))) {
+      if (!session || session.expiry <= Date.now() || (session.identity.kind !== 'guest' && !(session.identity.kind==='owner'&&session.identity.id==='owner'&&!session.identity.credentialId) && !await resolver?.active(session.identity))) {
         sessions.delete(id); return guest();
       }
       return { ...session.identity, source: 'session' };
     }
     // Credential-bearing requests never fall back to local owner compatibility.
-    if (!config.token && loopback(request.ip)) return owner('local');
+    if (!config.token && !teamMode && loopback(request.ip)) return owner('local');
     return guest();
   };
   const authenticated = ((request: FastifyRequest) => requestIdentity(request).kind !== 'guest') as AuthController;
@@ -83,7 +84,7 @@ export function installAuth(app: FastifyInstance, config: Config): AuthControlle
     }
   });
 
-  app.get('/api/session', async request => ({ required: !!config.token, authenticated: authenticated(request), identity: requestIdentity(request), localOwnerEnabled: !config.token }));
+  app.get('/api/session', async request => ({ required: !!config.token||teamMode, authenticated: authenticated(request), identity: requestIdentity(request), localOwnerEnabled: !config.token&&!teamMode }));
   app.post('/api/session', async (request, reply) => {
     if (request.headers.origin) {
       let host = '';
@@ -91,7 +92,7 @@ export function installAuth(app: FastifyInstance, config: Config): AuthControlle
       if (host !== request.headers.host) throw new ApiError(403, 'ORIGIN_REJECTED', 'Cross-origin sign-in is not allowed.');
     }
     const { token } = z.object({ token: z.string().max(4096) }).parse(request.body);
-    const identity = token ? await resolveToken(token) : (!config.token && loopback(request.ip) ? owner('local') : undefined);
+    const identity = token ? await resolveToken(token) : (!config.token && !teamMode && loopback(request.ip) ? owner('local') : undefined);
     if (!identity) throw new ApiError(401, 'INVALID_TOKEN', 'Incorrect or revoked access token.');
     const now = Date.now();
     for (const [id, session] of sessions) if (session.expiry < now) sessions.delete(id);

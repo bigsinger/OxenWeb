@@ -1,5 +1,6 @@
 import type { LabelAssignment, LabelColumn, LabelScope, LabelState, LabelTemplateApplication, QueryResult, RequestIdentity, TableColumn } from './index.js';
 import type { DatasetFieldMetadata } from './field-metadata.js';
+import type { DatasetEvaluation, EvaluationPatch, EvaluationRow } from './evaluation.js';
 
 export interface DatasetDescriptor {
   version: 1; id: string; name: string; canonicalPath: string; readmePath: string;
@@ -10,6 +11,11 @@ export interface DatasetDescriptor {
 }
 export interface DatasetAttachment { path: string; name: string; rowIds: string[]; sha256?: string; bytes?: number; kind: 'zip' | 'file' }
 export interface DatasetActor { id: string; name: string }
+/** Web operation evidence. Deliberately separate from sample records and export formats. */
+export interface DatasetRowActivity {
+  createdAt: string | null; updatedAt: string | null; actor?: DatasetActor;
+  source: 'web-operation' | 'source-file' | 'unknown'; kind?: 'import' | 'content' | 'annotation' | 'evaluation';
+}
 export interface DatasetSpan { id: string; pointer: string; sourceHash: string; start: number; end: number; values: Record<string, string | string[]>; note?: string }
 export interface DatasetStep { id: string; pointer: string; sourceHash: string; values: Record<string, string | string[]>; note?: string }
 export interface DatasetLabelRecord {
@@ -30,9 +36,12 @@ export interface DatasetSnapshot {
   attachments: DatasetAttachment[]; feedback: DatasetFeedback[];
   readme: string; readmePath: string; binding?: unknown;
   orphanAssignments: LabelAssignment[]; warnings: string[];
+  rowActivity?: Record<string, DatasetRowActivity>;
+  evaluation?: DatasetEvaluation;
   columnsByScope?: Partial<Record<LabelScope, LabelColumn[]>>;
 }
 export type DatasetOperation =
+  | { op: 'evaluation'; rowIds: string[]; patch: EvaluationPatch }
   | { op: 'update'; rowId: string; record: Record<string, unknown>; expectedContentHash?: string }
   | { op: 'append'; record: Record<string, unknown>; rowId?: string }
   | { op: 'delete'; rowId: string; expectedContentHash?: string }
@@ -40,10 +49,10 @@ export type DatasetOperation =
   | { op: 'feedback'; rowId?: string; columnId?: string; message: string }
   | { op: 'readme'; content: string };
 export interface DatasetSaveInput { ref: string; expectedCommit: string; message: string; operations: DatasetOperation[] }
-export type DatasetWriteOperation = 'edit-content' | 'assign-labels' | 'edit-dataset-labels' | 'edit-file-labels' | 'annotate-fragment' | 'feedback' | 'edit-readme';
+export type DatasetWriteOperation = 'edit-content' | 'assign-labels' | 'edit-dataset-labels' | 'edit-file-labels' | 'annotate-fragment' | 'feedback' | 'edit-readme' | 'edit-evaluation';
 export interface DatasetWriteContext { scope?: LabelScope; path?: string; operations: DatasetOperation[] }
 export type DatasetBeforeWrite = (key: {namespace:string;repo:string}, identity: RequestIdentity, branch: string, rowIds: string[], operation: DatasetWriteOperation, context: DatasetWriteContext) => Promise<void>;
-export interface DatasetCapabilities { editContent: boolean; appendRows: boolean; assignLabels: boolean; editDatasetLabels: boolean; editFileLabels: boolean; editReadme: boolean; feedback: boolean }
+export interface DatasetCapabilities { editContent: boolean; appendRows: boolean; assignLabels: boolean; editDatasetLabels: boolean; editFileLabels: boolean; editReadme: boolean; feedback: boolean; editEvaluation?: boolean }
 export interface DatasetRowCapabilities { editContent: boolean; assignLabels: boolean; feedback: boolean }
 export interface DatasetPage extends Omit<DatasetSnapshot, 'rows' | 'rowIds' | 'contentHashes' | 'labelRecords'> {
   rows: Record<string, unknown>[]; rowIds: string[]; contentHashes: Record<string, string>; labelRecords: DatasetLabelRecord[];
@@ -54,6 +63,8 @@ export interface DatasetPage extends Omit<DatasetSnapshot, 'rows' | 'rowIds' | '
   baseContentHashes?: Record<string,string>;
   /** Fixed base values for the visible page only, never a full-table payload. */
   baseRows?: Record<string, Record<string, unknown>>;
+  /** Fixed base management values for the visible page, separate from draft projection. */
+  baseEvaluationRows?: Record<string, EvaluationRow>;
   baseOwnLabelRecords?: Record<string, DatasetLabelRecord>;
   baseOwnFileLabelRecords?: Record<string, DatasetLabelRecord>;
   querySummary?: {engine:string;matchedRows:number;returnedRows:number;truncated:boolean;explanation:string};

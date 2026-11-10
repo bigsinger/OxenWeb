@@ -6,6 +6,7 @@ import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { DemoProvider } from '../src/demo.js';
 import { RepositorySettingsService } from '../src/repository-settings.js';
+import { SourceAccessMarkers } from '../src/source-access-markers.js';
 import type { RepositorySettingsState, RepositoryTokenGrant } from '../../../packages/shared/src/index.js';
 
 const base = '/api/repos/oxen/visual-search';
@@ -132,6 +133,8 @@ test('real Oxen stores settings/default branch/access policy as commits and enfo
   process.loadEnvFile(path.resolve('infra/oxen/local.env'));
   const directory = path.resolve('.data/tests'); await mkdir(directory, { recursive: true });
   const temporary = await mkdtemp(path.join(directory, 'settings-access-live-'));
+  assert.ok(temporary.startsWith(directory+path.sep),'Native contract control is an isolated temporary directory');
+  const sourceMarkers=new SourceAccessMarkers({filename:path.join(temporary,'source-access-markers.json')});await sourceMarkers.init();await sourceMarkers.retainRestrictions([]);
   const config = loadConfig({ ...process.env, DEMO_MODE: 'false', DEMO_DATA_FILE: path.join(temporary, 'state.json'), OXEN_CLI_ROOT: path.join(temporary, 'clones'), BFF_TOKEN: ownerToken });
   const app = await createApp(config); t.after(async () => { await app.close(); await rm(temporary, { recursive: true, force: true }); });
   const name = `settings-access-check-${Date.now()}`, endpoint = `/api/repos/local/${name}`;

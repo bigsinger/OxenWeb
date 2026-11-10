@@ -1,5 +1,6 @@
+import {durableWriteJson} from './durable-store.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type { RepoSummary, RepositoryPolicy, RepositorySettingsState, RequestIdentity } from '../../../packages/shared/src/index.js';
@@ -34,7 +35,13 @@ export class RepositorySettingsService {
   private configurationBranches = new Map<string, string>();
   private pointerLoaded?: Promise<void>;
   private pointerChain = Promise.resolve();
+  private writeAuthorizer?:(key:RepoKey,actor:RequestIdentity)=>Promise<void>;
+  private policyValidator?:(key:RepoKey,policy:RepositoryPolicy)=>Promise<void>;
   constructor(readonly provider: Provider, private pointerFile?: string) {}
+  setWriteAuthorizer(authorize:(key:RepoKey,actor:RequestIdentity)=>Promise<void>){this.writeAuthorizer=authorize;}
+  setPolicyValidator(validate:(key:RepoKey,policy:RepositoryPolicy)=>Promise<void>){this.policyValidator=validate;}
+  /** Shared serialization boundary for sticky evaluation activation and visibility changes. */
+  withPolicyLock<T>(key:RepoKey,action:()=>Promise<T>){return this.serialize(key,action);}
 
   private async loadPointers() {
     if (!this.pointerLoaded) this.pointerLoaded = (async () => {
@@ -51,9 +58,7 @@ export class RepositorySettingsService {
     const filename = this.pointerFile;
     const next = this.pointerChain.then(async () => {
       await mkdir(path.dirname(filename), { recursive: true });
-      const temporary = `${filename}.${randomUUID()}.tmp`;
-      await writeFile(temporary, JSON.stringify({ version: 1, branches: Object.fromEntries(this.configurationBranches) }, null, 2), { mode: 0o600 });
-      await rename(temporary, filename);
+      await durableWriteJson(filename,{version:1,branches:Object.fromEntries(this.configurationBranches)});
     });
     this.pointerChain = next.catch(() => {}); await next;
   }
@@ -107,12 +112,14 @@ export class RepositorySettingsService {
   }
   async mutate(key: RepoKey, actor: RequestIdentity, action: (state: RepositorySettingsState) => RepositoryPolicy, expectedCommit?: string): Promise<RepositorySettingsState> {
     return this.serialize(key, async () => {
+      await this.writeAuthorizer?.(key,actor);
       const state = await this.read(key);
       if (expectedCommit && state.commitId !== expectedCommit) throw new ApiError(409, 'SETTINGS_CONFLICT', 'Repository settings changed. Reload before saving.');
       const candidate = action(structuredClone(state));
       // expectedCommit is request concurrency metadata, never repository content.
       const { expectedCommit: _ignored, ...values } = candidate as RepositoryPolicy & { expectedCommit?: string };
       const policy = policySchema.parse({ ...values, version: 1, updatedAt: new Date().toISOString(), updatedBy: actor.id });
+      await this.policyValidator?.(key,policy);
       const branches = await this.provider.branches(key);
       if (!branches.some(branch => branch.name === policy.defaultBranch)) throw new ApiError(400, 'DEFAULT_BRANCH_NOT_FOUND', 'Select an existing branch as the default.');
       const workspace = await this.provider.createWorkspace(key, `${SETTINGS_WORKSPACE_PREFIX}${randomUUID()}`, state.configurationBranch);
@@ -120,7 +127,8 @@ export class RepositorySettingsService {
       try {
         if (workspace.baseCommitId && workspace.baseCommitId !== state.commitId) throw new ApiError(409, 'SETTINGS_CONFLICT', 'The configuration branch moved while creating the settings workspace. Reload and retry.');
         await this.provider.writeWorkspace(key, workspace.id, REPOSITORY_POLICY_PATH, Buffer.from(`${JSON.stringify(policy, null, 2)}\n`));
-        await this.provider.commitWorkspace(key, workspace.id, `Update repository settings by ${actor.name}`, state.commitId);
+        await this.writeAuthorizer?.(key,actor);
+        await this.provider.commitWorkspace(key, workspace.id, `Update repository settings by ${actor.name}`, state.commitId,async()=>{await this.writeAuthorizer?.(key,actor);await this.policyValidator?.(key,policy);});
         committed = true;
       } finally {
         // The temporary draft is private to this control operation; cleanup never rewrites branch state.

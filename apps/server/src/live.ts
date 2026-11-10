@@ -1,6 +1,7 @@
+import {durableWriteJson} from './durable-store.js';
 import createClient from 'openapi-fetch';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { components, paths } from '../../../packages/contracts/src/oxen.js';
 import type { Annotation, CommitDetail, CommitItem, DiffFile, FilePreview, RepoSummary, WorkspaceItem } from '../../../packages/shared/src/index.js';
@@ -55,7 +56,7 @@ export class LiveProvider implements Provider {
     let ready = false;
     try {
       const result = await this.api.GET('/api/version', { signal: AbortSignal.timeout(3000) });
-      ready = result.response.ok;
+      ready = result.response.ok&&(result.data as {oxen_version?:unknown}|undefined)?.oxen_version==='0.67.0';
     } catch { /* report unavailable without hiding the configured live mode */ }
     this.health = { checkedAt: Date.now(), ready };
     this.ready = ready;
@@ -86,7 +87,7 @@ export class LiveProvider implements Provider {
   private mappingKey(key: RepoKey, id: string) { return `${key.namespace}/${key.repo}/${id}`; }
   private async persistMapping(key: RepoKey, id: string, branch: string) {
     this.workspaceBranches.set(this.mappingKey(key, id), branch);
-    const next = this.mapChain.then(async () => { await mkdir(path.dirname(this.mappingsFile), { recursive: true }); const temp = `${this.mappingsFile}.tmp`; await writeFile(temp, JSON.stringify(Object.fromEntries(this.workspaceBranches)), { mode: 0o600 }); await rename(temp, this.mappingsFile); });
+    const next = this.mapChain.then(async () => { await mkdir(path.dirname(this.mappingsFile), { recursive: true }); await durableWriteJson(this.mappingsFile,Object.fromEntries(this.workspaceBranches)); });
     this.mapChain = next.catch(() => {}); await next;
   }
   private summary(namespace: string, name: string): RepoSummary { return { namespace, name, ...this.extensions.metadata({ namespace, repo: name }), defaultBranch: 'main', updatedAt: '', size: 0, fileCount: 0, visibility: 'unknown' }; }
@@ -163,6 +164,13 @@ export class LiveProvider implements Provider {
   async raw(key: RepoKey, ref: string, filename: string) {
     this.ensure(); safeFilePath(filename);
     const url = `${this.config.upstream}/api/repos/${encodeURIComponent(key.namespace)}/${encodeURIComponent(key.repo)}/file/${ref.split('/').map(encodeURIComponent).join('/')}/${filename.split('/').map(encodeURIComponent).join('/')}`;
+    return this.rawResource(url,filename);
+  }
+  async rawWorkspaceFile(key:RepoKey,id:string,filename:string){
+    this.ensure();safeFilePath(filename);const url=`${this.config.upstream}/api/repos/${encodeURIComponent(key.namespace)}/${encodeURIComponent(key.repo)}/workspaces/${encodeURIComponent(id)}/files/${filename.split('/').map(encodeURIComponent).join('/')}`;
+    return this.rawResource(url,filename);
+  }
+  private async rawResource(url:string,filename:string){
     let response: Response;
     try { response = await fetch(url, { headers: this.config.upstreamToken ? { Authorization: `Bearer ${this.config.upstreamToken}` } : {}, signal: AbortSignal.timeout(60_000), redirect: 'error' }); }
     catch { throw new ApiError(502, 'UPSTREAM_UNAVAILABLE', 'The configured Oxen server did not respond.'); }
@@ -359,10 +367,16 @@ export class LiveProvider implements Provider {
     this.unwrap(await this.api.POST('/api/repos/{namespace}/{repo_name}/workspaces/{workspace_id}/files/{path}', { params: { path: { ...repoParams(key), workspace_id: id, path: directory === '.' ? '' : directory } }, body: form as unknown as { file: string }, bodySerializer: body => body as unknown as FormData }));
     return this.workspace(key, id);
   }
-  async commitWorkspace(key: RepoKey, id: string, message: string, expectedCommit?: string) {
+  async removeWorkspaceFiles(key:RepoKey,id:string,filenames:string[]){
+    this.ensure();const paths=filenames.map(safeFilePath);if(!paths.length)return;
+    const response=await this.api.DELETE('/api/repos/{namespace}/{repo_name}/workspaces/{workspace_id}/files',{params:{path:{...repoParams(key),workspace_id:id}},body:paths});
+    if(response.response.status!==200)throw new ApiError(409,'RESTORE_REMOVE_INCOMPLETE','原生暂存删除未完整成功，未提交恢复。');this.unwrap(response);
+  }
+  async commitWorkspace(key: RepoKey, id: string, message: string, expectedCommit?: string,beforeWrite?:()=>Promise<void>) {
     return this.serializeCli(key, async () => {
       this.ensure(); const workspace = await this.workspace(key, id);
       if (!workspace.branch) throw new ApiError(409, 'WORKSPACE_BRANCH_UNKNOWN', 'The branch for this existing workspace is unknown. Create a workspace through this BFF before committing.');
+      await beforeWrite?.();
       if (expectedCommit && (await this.branches(key)).find(branch => branch.name === workspace.branch)?.commitId !== expectedCommit) throw new ApiError(409, 'LABEL_VERSION_CONFLICT', '分支已更新，请重新加载当前版本后再保存。');
       if (!workspace.changes.length) throw new ApiError(409, 'NO_CHANGES', 'Workspace has no staged changes.');
       if (expectedCommit) {

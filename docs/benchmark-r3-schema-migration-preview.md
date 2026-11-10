@@ -22,8 +22,10 @@
 
 执行（必须先重启为R3新BFF，由主线程审阅该精确预览后手动运行）：
 
-`npx tsx scripts/r3-benchmark-schema-migration.ts --apply "F:\bigsinger\OxenWeb\.data\r3-schema-migration\2026-11-08T08-19-33-451Z-9dd7bf\preview.json"`
+`npx tsx scripts/r3-benchmark-schema-migration.ts --apply ".data\r3-schema-migration\2026-11-08T08-19-33-451Z-9dd7bf\preview.json"`
 
 执行会再次核对四库名称、main heads、目录revision、所有源SHA及任务，然后通过规范服务另存/发布与层级采用API串行执行。任一前置条件变化即停止；部分已完成会保留并打印元数据，需要重新预览后恢复，不盲目覆盖。实际新发布checksum以真实规范服务为准，语义内容必须与审阅计划一致。
 
 回退读取点是每库原head，代表可复核的旧版本，不承诺自动重置分支。需要恢复采用关系时由负责人生成新的受控元数据提交；不能删除历史提交或更改原truth。
+
+公开文档中的个人工作站路径已泛化；实际样本和本机原始记录未随代码发布。

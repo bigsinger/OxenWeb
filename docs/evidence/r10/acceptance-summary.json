@@ -1,0 +1,399 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-08T17:59:29.586Z",
+  "scope": "R10 local implementation and acceptance",
+  "oxen": {
+    "version": "0.67.0",
+    "coreModified": false,
+    "fixedOpenApiChanged": false
+  },
+  "regression": {
+    "tests": 396,
+    "passed": 389,
+    "skipped": 7,
+    "failed": 0,
+    "cancelled": 0,
+    "skipReason": "Explicit historical live-test switches; see tests/README.md",
+    "buildPassed": true,
+    "typecheckPassed": true,
+    "generatedContractsIdentical": true
+  },
+  "cleanSource": {
+    "copied": 417,
+    "sourceTreeSha256": "028aa38f49d76fbefde65741b601b053c18a48f22df73a60a97440546e6385a5",
+    "excludedRuntime": true,
+    "excludedSecrets": true,
+    "sourceUncommittedChangesIncluded": true,
+    "passed": true,
+    "commands": [
+      "npm ci",
+      "npm run generate:api",
+      "npm run build",
+      "npm test"
+    ],
+    "tests": 396,
+    "passedTests": 389,
+    "skippedTests": 7,
+    "contractMatches": true,
+    "runtimeDataCopied": false,
+    "dependencyAuditVulnerabilities": 0,
+    "note": "Local independent source export, not a remote clone or CI run; acceptance prose was finalized afterward."
+  },
+  "nativeFaults": {
+    "passed": 4,
+    "receipt": ".data/r10-faults/latest.json",
+    "unknownBuildProof": "Metadata-only injected unknown record after an already successful real build; not an actual lost build response."
+  },
+  "capacity": {
+    "runId": "r10-capacity-mw7xmxol",
+    "executionId": "114ee4e2",
+    "startedAt": "2026-11-08T16:05:20.690Z",
+    "finishedAt": "2026-11-08T17:37:14.966Z",
+    "passed": true,
+    "elapsedMs": 5514276,
+    "hardware": {
+      "platform": "win32",
+      "arch": "x64",
+      "node": "v22.22.3",
+      "cpu": "Intel(R) Core(TM) i7-10700 CPU @ 2.90GHz",
+      "logicalCpus": 16,
+      "totalMemory": 34037272576,
+      "freeMemoryAtStart": 13921681408,
+      "native": "Official Oxen 0.67.0 / isolated native filesystem",
+      "origin": "http://127.0.0.1:3008",
+      "bff": "http://127.0.0.1:3009"
+    },
+    "sourceFingerprint": {
+      "sha256": "8d338c15f16350077fab2ef841b51f447fcecf306815d3d5faa2a3ff05b98633",
+      "files": 106
+    },
+    "sourceUnchanged": true,
+    "rounds": [
+      {
+        "round": 1,
+        "activeElapsedMs": 1800004,
+        "completed": true,
+        "gate": {
+          "requests": 570,
+          "p95Ms": 1935.09039999987,
+          "p99Ms": 2944.3055999999633,
+          "unexpected5xx": 0,
+          "timeouts": 0,
+          "expectedStatuses": {
+            "401": 0,
+            "403": 0,
+            "409": 0,
+            "413": 0,
+            "429": 0
+          },
+          "byCategory": {
+            "page": {
+              "requests": 120,
+              "p95Ms": 1935.8525999998674,
+              "p99Ms": 3070.757099999988
+            },
+            "draft-query": {
+              "requests": 45,
+              "p95Ms": 786.9578999999212,
+              "p99Ms": 3982.1005000000005
+            },
+            "draft-save": {
+              "requests": 45,
+              "p95Ms": 2411.9443999999203,
+              "p99Ms": 2692.2811999999994
+            },
+            "sort": {
+              "requests": 240,
+              "p95Ms": 862.0657999999821,
+              "p99Ms": 2006.2454000001308
+            },
+            "filter": {
+              "requests": 120,
+              "p95Ms": 2033.4482999998145,
+              "p99Ms": 2948.68740000001
+            }
+          }
+        },
+        "settledRssBytes": 162021376
+      },
+      {
+        "round": 2,
+        "activeElapsedMs": 1800007,
+        "completed": true,
+        "gate": {
+          "requests": 566,
+          "p95Ms": 1764.5230999998748,
+          "p99Ms": 2907.438000000082,
+          "unexpected5xx": 0,
+          "timeouts": 0,
+          "expectedStatuses": {
+            "401": 0,
+            "403": 0,
+            "409": 0,
+            "413": 0,
+            "429": 0
+          },
+          "byCategory": {
+            "page": {
+              "requests": 120,
+              "p95Ms": 1092.653999999864,
+              "p99Ms": 3207.475300000049
+            },
+            "draft-query": {
+              "requests": 43,
+              "p95Ms": 819.0720000001602,
+              "p99Ms": 1143.5713999997824
+            },
+            "sort": {
+              "requests": 240,
+              "p95Ms": 1547.465599999996,
+              "p99Ms": 2281.4543000003323
+            },
+            "draft-save": {
+              "requests": 43,
+              "p95Ms": 2356.7533999998122,
+              "p99Ms": 2953.563300000038
+            },
+            "filter": {
+              "requests": 120,
+              "p95Ms": 2406.589900000021,
+              "p99Ms": 2929.6763999999966
+            }
+          }
+        },
+        "settledRssBytes": 180035584
+      },
+      {
+        "round": 3,
+        "activeElapsedMs": 1800012,
+        "completed": true,
+        "gate": {
+          "requests": 570,
+          "p95Ms": 1575.2086000000127,
+          "p99Ms": 2875.8059000000358,
+          "unexpected5xx": 0,
+          "timeouts": 0,
+          "expectedStatuses": {
+            "401": 0,
+            "403": 0,
+            "409": 0,
+            "413": 0,
+            "429": 0
+          },
+          "byCategory": {
+            "page": {
+              "requests": 120,
+              "p95Ms": 1588.3686000001617,
+              "p99Ms": 1725.0515999998897
+            },
+            "draft-query": {
+              "requests": 45,
+              "p95Ms": 559.5927999997512,
+              "p99Ms": 3578.312900000252
+            },
+            "draft-save": {
+              "requests": 45,
+              "p95Ms": 2875.8059000000358,
+              "p99Ms": 4289.831599999685
+            },
+            "sort": {
+              "requests": 240,
+              "p95Ms": 603.1162000000477,
+              "p99Ms": 1741.181699999608
+            },
+            "filter": {
+              "requests": 120,
+              "p95Ms": 1549.3927999995649,
+              "p99Ms": 1681.8661000002176
+            }
+          }
+        },
+        "settledRssBytes": 154865664
+      }
+    ],
+    "measuredRequests": 4246,
+    "gate": {
+      "requests": 1706,
+      "p95Ms": 1645.5897999992594,
+      "p99Ms": 2893.4248999999836,
+      "unexpected5xx": 0,
+      "timeouts": 0,
+      "expectedStatuses": {
+        "401": 0,
+        "403": 0,
+        "409": 0,
+        "413": 0,
+        "429": 0
+      },
+      "byCategory": {
+        "page": {
+          "requests": 360,
+          "p95Ms": 1613.8472999995574,
+          "p99Ms": 3207.475300000049
+        },
+        "draft-query": {
+          "requests": 133,
+          "p95Ms": 819.0720000001602,
+          "p99Ms": 3578.312900000252
+        },
+        "draft-save": {
+          "requests": 133,
+          "p95Ms": 2620.985700000001,
+          "p99Ms": 2956.8338000001386
+        },
+        "sort": {
+          "requests": 720,
+          "p95Ms": 963.9259999999995,
+          "p99Ms": 2029.8708999999799
+        },
+        "filter": {
+          "requests": 360,
+          "p95Ms": 1995.7964000001084,
+          "p99Ms": 2929.6763999999966
+        }
+      }
+    },
+    "peakRssBytes": 1207939072,
+    "settledGrowthBytes": -7155712,
+    "settledNoiseBudgetBytes": 67108864,
+    "coldStartGate": {
+      "requests": 12,
+      "p95Ms": 3982.1005000000005,
+      "p99Ms": 3982.1005000000005,
+      "unexpected5xx": 0,
+      "timeouts": 0,
+      "expectedStatuses": {
+        "401": 0,
+        "403": 0,
+        "409": 0,
+        "413": 0,
+        "429": 0
+      },
+      "byCategory": {
+        "page": {
+          "requests": 3,
+          "p95Ms": 3849.4982999999993,
+          "p99Ms": 3849.4982999999993
+        },
+        "draft-query": {
+          "requests": 3,
+          "p95Ms": 3982.1005000000005,
+          "p99Ms": 3982.1005000000005
+        },
+        "draft-save": {
+          "requests": 3,
+          "p95Ms": 2692.2811999999994,
+          "p99Ms": 2692.2811999999994
+        },
+        "sort": {
+          "requests": 1,
+          "p95Ms": 861.5216,
+          "p99Ms": 861.5216
+        },
+        "filter": {
+          "requests": 2,
+          "p95Ms": 737.6738000000005,
+          "p99Ms": 737.6738000000005
+        }
+      }
+    },
+    "errors": [],
+    "isolatedServicesStopped": true,
+    "note": "Aggregate and each round gate passed. Per-category results are preserved; draft-save P95 is above 2s. Only the recorded four-user hardware/data recipe was measured."
+  },
+  "backup": {
+    "generation": "1a6e33db-1c3c-4992-b3cb-ed867965f6be",
+    "path": ".backups/2026-11-08T17-41-26-073Z-cc7a08d5",
+    "cutAt": "2026-11-08T17:41:39.036Z",
+    "files": 3701,
+    "bytes": 128912661,
+    "maintenanceMs": 449463,
+    "maintenanceWindowMet": true,
+    "runtimeHashes": {
+      "serverBuildSha256": "88e6272b1aa3cf0f2767489c9b86208cd958f091130d8d4f5ae3da7edf46bc24",
+      "webBuildSha256": "437e54ca6c4b3ae322f11e987872fff9306e7aa7017184e366767b18be087faa",
+      "contractSha256": "2ae57812994900f768c841e7e20d25418555ffbf37c3690775e2af5b8c581660",
+      "lockfileSha256": "a553bb5a6823eb499328d13c52aa5a563d76398d0d51470f30330c3869dba513"
+    },
+    "offsiteVerified": false,
+    "dailyScheduleInstalled": false
+  },
+  "recovery": {
+    "freshRestore": true,
+    "matchedCurrentBuild": true,
+    "restoredBffFromVerifiedBuild": true,
+    "announcedAt": "2026-11-08T17:49:45.8820000+00:00",
+    "readbackCompletedAt": "2026-11-09T01:54:35.3825055+08:00",
+    "RTOms": 289500,
+    "scriptRestoreElapsedMs": 284199,
+    "failureCount": 0,
+    "counts": {
+      "repositories": 15,
+      "branches": 44,
+      "datasets": 13,
+      "rows": 11860,
+      "fileChecksumsVerified": 3701,
+      "mergeRequests": 1,
+      "tasks": 0,
+      "snapshots": 1,
+      "releases": 0,
+      "releaseAssets": 3,
+      "releaseAssetBytes": 4964210,
+      "recycleEntries": 2,
+      "privateDrafts": 0,
+      "originalActorUiCheckpoints": 6,
+      "crossActorIsolationChecks": 6,
+      "credentialsRevoked": 0
+    },
+    "sourceHeadRowLabelBindingDigestsMatched": true,
+    "privateFullApiCoverage": true,
+    "verificationCredentialsDisposed": true,
+    "isolated3010Stopped": true,
+    "producerReady": true,
+    "note": "Same-machine isolated full restore with fixed official binary/Node already available. Does not prove offsite/fresh-machine RTO or sustained daily RPO."
+  },
+  "browser": {
+    "surface": "ChatGPT in-app browser",
+    "origin": "http://127.0.0.1:3001",
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "syntheticProject": "local/r8-project-acceptance-mw7tdcfk",
+    "pageIdentityPassed": true,
+    "meaningfulContentPassed": true,
+    "frameworkOverlayAbsent": true,
+    "errorWarnLogsAfterExplicitReload": 0,
+    "systemTimeAscendingDescendingPassed": true,
+    "directDrawerSwitchPassed": true,
+    "tableWidthBeforeAfter": 1230,
+    "bodyHeaderFontPx": 14,
+    "accessPersonalTokensAuditPagesPassed": true,
+    "syntheticQa390pxPassedEarlier": true,
+    "actualZipDownload": "Blocked by automatic browser approval; not retried by another channel",
+    "evidenceIndex": "docs/evidence/r10/README.md"
+  },
+  "hygiene": {
+    "whitespaceCheckPassed": true,
+    "runtimeFilesTracked": 0,
+    "sampleBundleFilesTracked": 0,
+    "qa3005And5173Stopped": true,
+    "newGitCommitOrPush": false
+  },
+  "remainingDeploymentGates": [
+    "Independent offsite/offline destination, key custody and maintenance schedule are not supplied; encrypted external copy and daily task are not deployed.",
+    "Local developer owner mode remains; real team deployment must configure bootstrap protection, BFF_TEAM_MODE=true and individual scoped credentials.",
+    "Actual browser ZIP download awaits specific approval after automatic rejection.",
+    "Remote CI has not been pushed or executed."
+  ],
+  "followupRetention": {
+    "date": "2026-11-09",
+    "originalGeneration": "1a6e33db-1c3c-4992-b3cb-ed867965f6be",
+    "originalLocalPathRetained": false,
+    "reason": "Replaced by latest verified same-UTC-day generation under documented retention policy",
+    "replacementGeneration": "3c0027b6-4922-42f3-a845-62d7d38418af",
+    "replacementRecord": "docs/implementation-r11.md",
+    "maintenanceAnchor4276Retained": true,
+    "note": "Original R10 measurement values are unchanged."
+  }
+}

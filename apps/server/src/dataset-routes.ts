@@ -13,6 +13,9 @@ export interface DatasetAccess {
   requireCapability?(key:RepoKey,identity:RequestIdentity,capability:any):Promise<unknown>;
 }
 export interface DatasetRouteOptions {
+  globalFields?: DatasetServiceOptions['globalFields'];
+  beforeGlobalFieldsAdoption?:DatasetServiceOptions['beforeGlobalFieldsAdoption'];
+  evaluation?:DatasetServiceOptions['evaluation'];onEvaluationCommitted?:DatasetServiceOptions['onEvaluationCommitted'];
   appendRows?:(key:RepoKey,identity:RequestIdentity,branch:string)=>Promise<boolean>;
   rowCapabilities?:(key:RepoKey,identity:RequestIdentity,branch:string,page:DatasetPage)=>Promise<Record<string,DatasetRowCapabilities>>;
   access?:DatasetAccess; governance?:{snapshot:(key:RepoKey,ref:string)=>Promise<{binding?:unknown}>}; beforeWrite?:DatasetBeforeWrite; service?:DatasetService;workflowFields?:DatasetServiceOptions['workflowFields'];
@@ -23,15 +26,16 @@ export const datasetQuerySchema=z.object({ref:z.string().transform(safeRef).defa
 const key=(request:FastifyRequest)=>{const parsed=z.object({namespace:z.string().transform(safeSegment),repo:z.string().transform(safeSegment)}).parse(request.params);return {namespace:parsed.namespace,repo:parsed.repo};};
 export function registerDatasetRoutes(app:FastifyInstance,provider:Provider,options:DatasetRouteOptions={}):DatasetService{
   const authorize=async(repository:RepoKey,identity:RequestIdentity,operation:DatasetWriteOperation)=>{
-    if(options.access?.requireCapability)await options.access.requireCapability(repository,identity,capability(operation));
+    if(options.access?.requireCapability){await options.access.requireCapability(repository,identity,operation==='edit-evaluation'?'release.manage':capability(operation));if(operation==='edit-evaluation')await options.access.requireCapability(repository,identity,'data.edit');}
+    else if(operation==='edit-evaluation'&&identity.kind!=='owner')throw new ApiError(403,'DATASET_PERMISSION_REQUIRED','发布分组需要明确的负责人权限。');
     else if(options.access)await options.access.require(repository,identity,operation==='feedback'?'read':'write');
   };
-  const datasets=options.service??new DatasetService(provider,{authorize:options.access?authorize:undefined,governance:options.governance,beforeWrite:options.beforeWrite,workflowFields:options.workflowFields});
+  const datasets=options.service??new DatasetService(provider,{globalFields:options.globalFields,beforeGlobalFieldsAdoption:options.beforeGlobalFieldsAdoption,authorize:options.access?authorize:undefined,governance:options.governance,beforeWrite:options.beforeWrite,workflowFields:options.workflowFields,evaluation:options.evaluation,onEvaluationCommitted:options.onEvaluationCommitted});
   const read=async(request:FastifyRequest)=>{const repository=key(request);await options.access?.require(repository,requestIdentity(request),'read');return repository;};
   const permissions=async(repository:RepoKey,identity:RequestIdentity,branch:string):Promise<DatasetCapabilities>=>{
     const may=async(operation:DatasetWriteOperation)=>{try{if(identity.kind==='guest')return false;if(options.access)await authorize(repository,identity,operation);else if(identity.kind!=='owner')return false;return true;}catch{return false;}};
     const [editContent,assignLabels,editDatasetLabels,editFileLabels,editReadme,feedback]=await Promise.all(['edit-content','assign-labels','edit-dataset-labels','edit-file-labels','edit-readme','feedback'].map(operation=>may(operation as DatasetWriteOperation)));
-    return {editContent:!!editContent,appendRows:!!editContent&&(options.appendRows?await options.appendRows(repository,identity,branch):true),assignLabels:!!assignLabels,editDatasetLabels:!!editDatasetLabels,editFileLabels:!!editFileLabels,editReadme:!!editReadme,feedback:!!feedback};
+    return {editContent:!!editContent,appendRows:!!editContent&&(options.appendRows?await options.appendRows(repository,identity,branch):true),assignLabels:!!assignLabels,editDatasetLabels:!!editDatasetLabels,editFileLabels:!!editFileLabels,editReadme:!!editReadme,feedback:!!feedback,editEvaluation:await may('edit-evaluation')};
   };
   const base='/api/repos/:namespace/:repo/dataset';
   app.get(base,async request=>{const repository=await read(request),input=datasetQuerySchema.omit({filters:true,prompt:true,allowExternalSchema:true,engine:true}).parse(request.query),page=await datasets.page(repository,input.ref,input);return {...page,capabilities:await permissions(repository,requestIdentity(request),input.ref),...(options.rowCapabilities?{rowCapabilities:await options.rowCapabilities(repository,requestIdentity(request),input.ref,page)}:{})};});

@@ -1,5 +1,6 @@
+import {durableWriteJson} from './durable-store.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type { DimensionDraft, GovernanceAccess, GovernanceAudit, GovernanceDirectory, GovernanceFeedback, GovernanceOrganization, GovernanceTemplate, LabelColumn, LabelScope, ProjectSchemaBinding, ProjectSchemaBindingV1, ProjectSchemaBindingV2, ProjectSchemaState, ProjectTemplateLayer, PublishedDimension, PublishedTemplateSnapshot, RequestIdentity, SchemaLayer, TemplateDraft, TemplateTargetKind, GovernanceDomain } from '../../../packages/shared/src/index.js';
@@ -9,6 +10,9 @@ import { ApiError } from './errors.js';
 import { safeRef, safeSegment } from './safety.js';
 import { labelColumnSchema, validateLabelDocument, LABEL_PATH } from './labels.js';
 import { getGovernancePreset } from './label-templates.js';
+import { defaultGlobalFieldCatalog, type GlobalFieldAccess, type GlobalFieldCatalog, type GlobalFieldCatalogState, type GlobalFieldDefinition } from '../../../packages/shared/src/global-fields.js';
+import { globalFieldCatalogSchema, validateGlobalFieldDefinitions } from './global-field-catalog.js';
+import { operationContext } from './operation-context.js';
 
 export const SCHEMA_BINDING_PATH = '.oxenweb/schema-binding.json';
 const id = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/);
@@ -24,11 +28,12 @@ const v1BindingSchema=templateLayerSchema.extend({version:z.literal(1)}).strict(
 const v2BindingSchema=z.object({version:z.literal(2),layers:z.object({dataset:templateLayerSchema.optional(),sample:templateLayerSchema.optional()}).strict().refine(value=>value.dataset||value.sample),legacy:v1BindingSchema.optional(),legacyColumns:z.array(labelColumnSchema).max(1000).optional(),checksum:z.string().regex(/^[a-f0-9]{64}$/),boundAt:z.string(),boundBy:z.string()}).strict();
 const organizationSchema = z.object({ id, name: z.string().min(1).max(120), revision: z.number().int().positive(), domains:z.array(domainSchema).max(200).optional(), maintainers: z.array(z.object({ id: z.string(), name: z.string() })), dimensions: z.array(z.object({ id, revision: z.number().int().positive(), draft: dimensionDraftSchema, versions: z.array(publishedDimensionSchema), deprecated: z.boolean(), updatedAt: z.string(), updatedBy: z.string() })), templates: z.array(z.object({ id, revision: z.number().int().positive(), draft: templateDraftSchema, versions: z.array(publishedTemplateSchema), deprecated: z.boolean(), updatedAt: z.string(), updatedBy: z.string() })) });
 const feedbackSchema = z.object({ id: z.string().uuid(), organizationId: id, project: z.object({ namespace: z.string(), repo: z.string() }), templateId: id.optional(), dimensionId: id.optional(), requestedOption: z.string().max(120).optional(), reason: z.string().min(1).max(2000), authorId: z.string(), authorName: z.string(), createdAt: z.string(), status: z.enum(['open', 'resolved', 'declined']), response: z.string().max(2000).optional(), respondedBy: z.string().optional() });
-const stateSchema = z.object({ version: z.literal(1), organizations: z.array(organizationSchema).max(1000), feedback: z.array(feedbackSchema).max(10000), audit: z.array(z.object({ id: z.string(), organizationId: z.string(), action: z.string(), objectId: z.string(), actorId: z.string(), actorName: z.string(), at: z.string(), revision: z.number() })).max(50000) }).strict();
+const stateSchema = z.object({ version: z.literal(1), organizations: z.array(organizationSchema).max(1000), feedback: z.array(feedbackSchema).max(10000), globalFields: globalFieldCatalogSchema.optional(), globalFieldHistory:z.array(globalFieldCatalogSchema).max(10000).optional(), globalFieldProjects:z.array(z.object({namespace:z.string().transform(safeSegment),repo:z.string().transform(safeSegment)}).strict()).max(100000).optional(), globalFieldMaintainers:z.array(z.object({id:z.string().uuid(),name:z.string().max(120)}).strict()).max(1000).optional(), audit: z.array(z.object({ id: z.string(), organizationId: z.string(), action: z.string(), objectId: z.string(), actorId: z.string(), actorName: z.string(), at: z.string(), revision: z.number() })).max(50000) }).strict();
 type State = z.infer<typeof stateSchema>;
 function canonical(value: unknown): unknown { if (Array.isArray(value)) return value.map(canonical); if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])); return value; }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 const at = () => new Date().toISOString();
+function markGovernanceWrite(){const execution=operationContext.getStore();if(execution)execution.writeAttempted=true;}
 export const defaultGovernanceDomains:GovernanceDomain[]=[{id:'general',name:'通用',description:'跨业务复用的数据集与样本质量规范。'},{id:'ai-safety',name:'AI 安全',description:'AI 安全数据集目录分类与样本专题分析。'}];
 export const getTemplateTargetKind=(snapshot:Pick<TemplateDraft,'targetKind'>):TemplateTargetKind=>snapshot.targetKind??'legacy';
 const scoped=(columns:LabelColumn[],scope:LabelScope)=>columns.filter(column=>!column.scopes||column.scopes.includes(scope));
@@ -66,11 +71,64 @@ export class GovernanceService {
     try { const content = await readFile(this.filename); if (content.length > 32 * 1024 * 1024) throw new Error('Governance catalog too large'); this.state = stateSchema.parse(JSON.parse(content.toString('utf8'))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new ApiError(503, 'GOVERNANCE_UNAVAILABLE', '规范控制面无法读取，已停止管理操作。'); this.state.organizations = [...new Set(organizations)].map(value => ({ id: id.parse(value), name: value, revision: 1, maintainers: [], dimensions: [], templates: [] })); }
     this.access.setSchemaAuthorizer((key, identity) => this.canManage(identity, key.namespace));
+    if(this.state.globalFields)validateGlobalFieldDefinitions(this.state.globalFields.fields);
+    for(const [index,snapshot] of (this.state.globalFieldHistory??[]).entries()){
+      validateGlobalFieldDefinitions(snapshot.fields);
+      if(index&&snapshot.revision<=(this.state.globalFieldHistory![index-1]!.revision))throw new ApiError(503,'GOVERNANCE_UNAVAILABLE','全局字段历史版本顺序无效。');
+    }
+    const last=this.state.globalFieldHistory?.at(-1);if(last&&digest(last)!==digest(this.globalFieldCatalog()))throw new ApiError(503,'GOVERNANCE_UNAVAILABLE','全局字段当前目录与历史快照不一致。');
   }
   private org(state: State, organizationId: string): GovernanceOrganization { const organization = state.organizations.find(item => item.id === organizationId); if (!organization) throw new ApiError(404, 'ORGANIZATION_NOT_FOUND', '组织不存在。'); return organization; }
   async canManage(identity: RequestIdentity, organizationId: string): Promise<boolean> { return await this.access.active(identity) && (identity.kind === 'owner' || !!this.state.organizations.find(item => item.id === organizationId)?.maintainers.some(item => item.id === identity.id)); }
   async requireSchemaMaintainer(identity: RequestIdentity, organizationId: string) { if (!await this.canManage(identity, organizationId)) throw new ApiError(403, 'SCHEMA_MAINTAINER_REQUIRED', '仅实例管理员或此组织指定的规范维护者可管理目录。'); }
   async accessState(identity: RequestIdentity): Promise<GovernanceAccess> { const owner = identity.kind === 'owner' && await this.access.active(identity); const organizations = []; for (const org of this.state.organizations) if (await this.canManage(identity, org.id)) organizations.push({ id: org.id, name: org.name, canManage: true }); return { owner, canManage: owner || organizations.length > 0, organizations }; }
+  globalFieldCatalog(): GlobalFieldCatalog { return structuredClone(this.state.globalFields ?? defaultGlobalFieldCatalog()); }
+  globalFieldHistory(): GlobalFieldCatalog[] { return structuredClone(this.state.globalFieldHistory??[this.globalFieldCatalog()]); }
+  private appendGlobalFieldHistory(state:State,previous:GlobalFieldCatalog){
+    const history=structuredClone(state.globalFieldHistory??[previous]);history.push(structuredClone(state.globalFields!));state.globalFieldHistory=history;
+    if(Buffer.byteLength(JSON.stringify(state))>28*1024*1024)throw new ApiError(413,'GLOBAL_FIELD_HISTORY_CAPACITY','全局字段历史存储接近容量上限，请由管理员扩容后重试；历史未被裁剪。');
+  }
+  async requireGlobalFieldAdmin(identity:RequestIdentity){if(!(await this.globalFieldAccess(identity)).owner)throw new ApiError(403,'GLOBAL_FIELD_ADMIN_REQUIRED','仅有效的实例管理员可修改全局字段或同步全局项目规则。');}
+  globalFieldsManaged(key:RepoKey):boolean { return (this.state.globalFieldProjects??[]).some(item=>item.namespace===key.namespace&&item.repo===key.repo); }
+  /** Sticky access boundary: restoring a pre-adoption data commit must not revive old unrestricted releases. */
+  async markGlobalFieldsManaged(key:RepoKey):Promise<void> {
+    const repository={namespace:safeSegment(key.namespace),repo:safeSegment(key.repo)};
+    const run=this.chain.then(async()=>{if(this.globalFieldsManaged(repository))return;const state=structuredClone(this.state);state.globalFieldProjects=[...(state.globalFieldProjects??[]),repository];stateSchema.parse(state);await mkdir(path.dirname(this.filename),{recursive:true});markGovernanceWrite();await durableWriteJson(this.filename,state);this.state=state;});this.chain=run.then(()=>{},()=>{});return run;
+  }
+  async globalFieldAccess(identity: RequestIdentity): Promise<GlobalFieldAccess> {
+    const active=await this.access.active(identity),owner=active&&identity.kind==='owner',canManage=owner||active&&!!this.state.globalFieldMaintainers?.some(item=>item.id===identity.id);
+    return {owner,canEdit:owner,canManage,maintainers:canManage?structuredClone(this.state.globalFieldMaintainers??[]):[]};
+  }
+  async globalFieldState(identity: RequestIdentity): Promise<GlobalFieldCatalogState> {
+    if (identity.kind === 'guest' || !await this.access.active(identity)) throw new ApiError(401, 'AUTH_REQUIRED', '请登录后读取字段目录。');
+    return { catalog: this.globalFieldCatalog(), ...await this.globalFieldAccess(identity) };
+  }
+  async saveGlobalFields(identity: RequestIdentity, fields: GlobalFieldDefinition[], expectedRevision: number): Promise<GlobalFieldCatalogState> {
+    const run = this.chain.then(async () => {
+      await this.requireGlobalFieldAdmin(identity);
+      const previous = this.globalFieldCatalog();
+      if (previous.revision !== expectedRevision) throw new ApiError(409, 'GLOBAL_FIELDS_REVISION_CONFLICT', '全局字段已被其他人更新，请重新加载后核对。');
+      validateGlobalFieldDefinitions(fields);
+      const state = structuredClone(this.state), timestamp = at();
+      state.globalFields = globalFieldCatalogSchema.parse({ version: 1, revision: previous.revision + 1, fields, updatedAt: timestamp, updatedBy: identity.id });
+      state.audit.push({ id: randomUUID(), organizationId: '__global__', action: 'global-fields.update', objectId: 'global-fields', actorId: identity.id, actorName: identity.name, at: timestamp, revision: state.globalFields.revision });
+      this.appendGlobalFieldHistory(state,previous);
+      stateSchema.parse(state); await mkdir(path.dirname(this.filename), { recursive: true });
+      await this.requireGlobalFieldAdmin(identity);
+      markGovernanceWrite();await durableWriteJson(this.filename, state); this.state = state;
+      return { catalog: this.globalFieldCatalog(), ...await this.globalFieldAccess(identity) };
+    }); this.chain = run.then(() => {}, () => {}); return run;
+  }
+  async setGlobalFieldMaintainer(identity: RequestIdentity, identityId: string, enabled: boolean, expectedRevision: number): Promise<GlobalFieldCatalogState> {
+    const run=this.chain.then(async()=>{
+      if(!(await this.globalFieldAccess(identity)).owner)throw new ApiError(403,'OWNER_REQUIRED','仅实例管理员可指定全局字段维护者。');
+      const previous=this.globalFieldCatalog();if(previous.revision!==expectedRevision)throw new ApiError(409,'GLOBAL_FIELDS_REVISION_CONFLICT','全局字段目录已变化，请重新加载。');
+      const member=this.access.identityDirectory().find(item=>item.id===identityId)??(!enabled?this.state.globalFieldMaintainers?.find(item=>item.id===identityId):undefined);if(!member)throw new ApiError(404,'IDENTITY_NOT_FOUND','请先创建独立有效的协作者身份。');
+      const state=structuredClone(this.state),timestamp=at();state.globalFieldMaintainers=(state.globalFieldMaintainers??[]).filter(item=>item.id!==identityId);if(enabled)state.globalFieldMaintainers.push({id:member.id,name:member.name});
+      state.globalFields={...previous,revision:previous.revision+1,updatedAt:timestamp,updatedBy:identity.id};state.audit.push({id:randomUUID(),organizationId:'__global__',action:'global-fields.maintainer',objectId:identityId,actorId:identity.id,actorName:identity.name,at:timestamp,revision:state.globalFields.revision});this.appendGlobalFieldHistory(state,previous);stateSchema.parse(state);await mkdir(path.dirname(this.filename),{recursive:true});await this.requireGlobalFieldAdmin(identity);markGovernanceWrite();await durableWriteJson(this.filename,state);this.state=state;
+      return {catalog:this.globalFieldCatalog(),...await this.globalFieldAccess(identity)};
+    });this.chain=run.then(()=>{},()=>{});return run;
+  }
   async directory(identity: RequestIdentity, organizationId: string): Promise<GovernanceDirectory> {
     await this.requireSchemaMaintainer(identity, organizationId);
     const feedback = [];
@@ -85,8 +143,7 @@ export class GovernanceService {
       if (!['organization.create', 'maintainer.change', 'feedback.create'].includes(action)) await this.requireSchemaMaintainer(identity, organizationId);
       const state = structuredClone(this.state), value = change(state), organization = this.org(state, organizationId); organization.revision++;
       state.audit.push({ id: randomUUID(), organizationId, action, objectId, actorId: identity.id, actorName: identity.name, at: at(), revision: organization.revision });
-      stateSchema.parse(state); await mkdir(path.dirname(this.filename), { recursive: true }); const temporary = `${this.filename}.${randomUUID()}.tmp`;
-      await writeFile(temporary, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 }); await rename(temporary, this.filename); this.state = state; return structuredClone(value);
+      stateSchema.parse(state); await mkdir(path.dirname(this.filename), { recursive: true }); markGovernanceWrite();await durableWriteJson(this.filename,state); this.state = state; return structuredClone(value);
     }); this.chain = result.then(() => {}, () => {}); return result;
   }
   async createOrganization(identity: RequestIdentity, organizationId: string, name: string) { if (identity.kind !== 'owner') throw new ApiError(403, 'OWNER_REQUIRED', '仅实例管理员可创建组织。'); id.parse(organizationId); return this.mutate(identity, organizationId, 'organization.create', organizationId, state => { if (state.organizations.some(item => item.id === organizationId)) conflict(); const organization = { id: organizationId, name, revision: 1, maintainers: [], dimensions: [], templates: [] }; state.organizations.push(organization); return organization; }); }

@@ -5,7 +5,7 @@ import { ApiError } from './errors.js';
 
 /** In-memory read view. No upstream workspace or branch is created. */
 export function datasetOverlayProvider(provider:Provider,writes:Map<string,Buffer>):Provider{
-  const mutations=new Set(['createRepo','updateRepo','createBranch','merge','resolveMerge','createWorkspace','deleteWorkspace','writeWorkspace','commitWorkspace','annotate','push']);
+  const mutations=new Set(['createRepo','updateRepo','createBranch','merge','resolveMerge','createWorkspace','deleteWorkspace','writeWorkspace','removeWorkspaceFiles','commitWorkspace','annotate','push']);
   return new Proxy(provider,{get(target,property){
     if(mutations.has(String(property)))return async()=>{throw new ApiError(500,'DATASET_DRAFT_MUTATION','草稿预览禁止执行上游写入。');};
     if(property==='raw')return async(key:RepoKey,ref:string,filename:string)=>writes.has(filename)?{content:Buffer.from(writes.get(filename)!),mime:'application/json',filename:path.posix.basename(filename)}:target.raw(key,ref,filename);

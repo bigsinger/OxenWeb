@@ -8,6 +8,9 @@ import { DemoProvider } from '../src/demo.js';
 import { loadConfig } from '../src/config.js';
 import type { AnnotationTaskView } from '../../../packages/shared/src/workflow-types.js';
 import type { DatasetPage } from '../../../packages/shared/src/dataset.js';
+import { DatasetService } from '../src/dataset.js';
+import { WorkflowService } from '../src/workflow.js';
+import type { RepositoryAccessService } from '../src/repository-access.js';
 
 const ownerToken = 'synthetic-workflow-owner-token';
 async function fixture(rows = 4) {
@@ -27,7 +30,7 @@ async function fixture(rows = 4) {
     const response = await call('POST', `${base}/access`, { name, role }); assert.equal(response.statusCode, 201, response.body);
     return response.json() as { collaborator: { id: string }; token: string };
   };
-  return { app, provider, key, base, call, grant, async close() { await app.close(); await rm(directory, { recursive: true, force: true }); } };
+  return { app, provider, key, base, call, grant, directory, async close() { await app.close(); await rm(directory, { recursive: true, force: true }); } };
 }
 
 test('1000 stable samples are assigned as 334/333/333 from one pinned baseline', async () => {
@@ -86,6 +89,23 @@ test('independent identities annotate, review and merge disjoint records without
     const page = final.json() as DatasetPage;
     assert.equal(page.totalRows, 4); assert.equal(page.labels.assignments.filter(item => item.scope === 'row').length, 4);
     assert.deepEqual((await f.provider.raw(f.key, 'main', 'data/samples.jsonl')).content, source);
+    const scoped = new WorkflowService({ provider: f.provider, datasets: new DatasetService(f.provider), access: {} as RepositoryAccessService, filename: path.join(f.directory, 'annotation-tasks.json') });
+    await scoped.init();
+    const firstId = page.rowIds[0]!, secondId = page.rowIds[1]!;
+    const first = await scoped.preflight(f.key, 'main', [firstId]);
+    assert.equal(first.ok, true, JSON.stringify(first.issues));
+    assert.deepEqual(Object.keys(first.acceptedValues), [firstId]);
+    assert.ok(first.reviewSnapshot.reviews.every(review => review.decisions.every(decision => decision.rowId === firstId) && review.submissions.every(submission => Object.keys(submission.fingerprints).every(id => id === firstId))));
+    assert.ok(first.reviewSnapshot.tasks.every(task => task.rowIds.length === 1 && task.rowIds[0] === firstId));
+    assert.ok(page.rowIds.slice(1).every(id => !JSON.stringify(first).includes(id)), 'scoped review envelope must not disclose other stable IDs');
+    assert.deepEqual(Object.keys((await scoped.preflight(f.key, 'main', [secondId])).acceptedValues), [secondId], 'scope is part of preflight cache identity');
+    assert.equal(Object.keys((await scoped.preflight(f.key, 'main')).acceptedValues).length, 4, 'a scoped request does not poison the full-dataset cache');
+    await assert.rejects(scoped.preflight(f.key, 'main', [firstId, firstId]), (error: unknown) => (error as { code: string }).code === 'WORKFLOW_SCOPE_INVALID');
+    await assert.rejects(scoped.preflight(f.key, 'main', ['absent-stable-id']), (error: unknown) => (error as { code: string }).code === 'WORKFLOW_SCOPE_INVALID');
+    const changed = await f.call('POST', `${f.base}/dataset/save`, { ref: 'main', expectedCommit: page.commitId, message: 'Synthetic excluded row content changed', operations: [{ op: 'update', rowId: page.rowIds[3], record: { id: 'sample-4', text: 'changed synthetic excluded row', expected: 'source-truth' } }] });
+    assert.equal(changed.statusCode, 200, changed.body);
+    assert.equal((await scoped.preflight(f.key, 'main')).ok, false, 'changed content invalidates the full-dataset review');
+    assert.equal((await scoped.preflight(f.key, 'main', [firstId])).ok, true, 'a valid scoped row retains its verified proof when an excluded row changes');
     const branch = tasks[0]!.participants[0]!.branch, current = (await f.provider.branches(f.key)).find(item => item.name === branch)!.commitId;
     const revoked = await f.call('DELETE', `${f.base}/access/${reviewer.collaborator.id}`); assert.equal(revoked.statusCode, 200, revoked.body);
     const inaccessible = await f.call('POST', `${f.base}/tasks/${tasks[0]!.id}/review`, { expectedRevision: 999, decisions: [{ rowId: tasks[0]!.rowIds[0], verdict: 'approved', comment: '' }] }, reviewer.token);

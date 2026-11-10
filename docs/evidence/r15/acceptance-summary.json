@@ -1,0 +1,100 @@
+{
+  "date": "2026-11-09",
+  "scope": "Frontend-only human label column ordering and auto-fit fields selected for display",
+  "oxenCoreModified": false,
+  "bffContractChanged": false,
+  "fixedOpenApiChanged": false,
+  "realBenchmarksReadOrWritten": false,
+  "r14AssignmentsWritten": false,
+  "automated": {
+    "tests": 499,
+    "passed": 492,
+    "skipped": 7,
+    "failed": 0,
+    "durationMs": 88333.623
+  },
+  "typecheckPassed": true,
+  "stagedProductionBuildPassed": true,
+  "fixedContractDiffEmpty": true,
+  "diffCheckPassed": true,
+  "browser": {
+    "qa": {
+      "synthetic": true,
+      "bffPort": 3012,
+      "vitePort": 5174,
+      "rows": 12,
+      "labelsAfterVisibleId": true,
+      "hiddenIdFallbackAfterSequence": true,
+      "desktopColHeaderCellCounts": [
+        22,
+        22,
+        22
+      ],
+      "labelButtonTarget": "qa-1",
+      "labelDoubleClickTarget": "qa-2",
+      "uncommittedVisibilityUsedForFit": true,
+      "searchDoesNotLimitFit": true,
+      "fieldsTotal": 17,
+      "fieldsFitted": 16,
+      "hiddenField": "prompt",
+      "hiddenFixedWidthRetained": 900,
+      "hiddenLaterWidthRetainedAfterUndo": 950,
+      "hiddenExportRemainedTrue": true,
+      "savedSyntheticConfiguration": true,
+      "narrow": {
+        "width": 390,
+        "height": 844,
+        "documentClientWidth": 380,
+        "documentScrollWidth": 380,
+        "tableClientWidth": 336,
+        "tableScrollWidth": 3618
+      },
+      "viewportReset": true,
+      "consoleWarnOrError": 0,
+      "qaProcessesStopped": true
+    },
+    "production": {
+      "port": 3001,
+      "repository": "local/r8-project-acceptance-mw7tdcfk",
+      "synthetic": true,
+      "sourceOrder": [
+        "score",
+        "text",
+        "id"
+      ],
+      "labelsAfterId": true,
+      "colHeaderCellCounts": [
+        11,
+        11,
+        11
+      ],
+      "head": "d3ec343ab4cfc2f12d0331dc14d892d4",
+      "repositoryReadOnly": true,
+      "consoleWarnOrError": 0,
+      "healthReady": true,
+      "acceptsWrites": true
+    },
+    "browserDownloadsOrUploadsAttempted": false,
+    "previousManualDownloadHandoffRetained": true
+  },
+  "deployment": {
+    "passed": true,
+    "startedAt": "2026-11-09T09:48:23.183Z",
+    "completedAt": "2026-11-09T09:48:24.578Z",
+    "oldPid": 17448,
+    "newPid": 26544,
+    "upstreamLeftRunning": true,
+    "fullColdBackupRepeated": false,
+    "builds": [
+      {
+        "name": "server",
+        "sha256": "3d9bb3a6f899fd8fd81fadd79d307b17d64703a568adc2a4c36470fddb6413b8"
+      },
+      {
+        "name": "web",
+        "sha256": "c5764da08413fc6a796f3965de4da4f71d1a33653a04816ec862ca9f8f6d4b48"
+      }
+    ]
+  },
+  "gitCommitOrPushPerformed": false
+}

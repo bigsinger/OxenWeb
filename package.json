@@ -2,7 +2,10 @@
   "name": "oxen-web",
   "version": "0.1.0",
   "private": true,
-  "engines": {"node": ">=22.16.0", "npm": ">=10.0.0"},
+  "engines": {
+    "node": ">=22.16.0",
+    "npm": ">=10.0.0"
+  },
   "type": "module",
   "workspaces": [
     "apps/*",
@@ -19,7 +22,16 @@
     "oxen:start": "node scripts/oxen.mjs start",
     "oxen:stop": "node scripts/oxen.mjs stop",
     "oxen:seed": "node scripts/oxen.mjs seed",
-    "oxen:status": "node scripts/oxen.mjs status"
+    "oxen:status": "node scripts/oxen.mjs status",
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list",
+    "test:capacity": "tsx scripts/r10-capacity-acceptance.ts",
+    "test:recovery": "tsx scripts/r10-backup-acceptance.ts",
+    "ops:backup:plan": "tsx scripts/ops-backup-coordinated.ts",
+    "ops:backup": "tsx scripts/ops-backup-coordinated.ts --execute",
+    "ops:backup:verify": "tsx scripts/ops-backup.ts verify",
+    "ops:restore": "tsx scripts/ops-backup.ts restore",
+    "ops:source-access:init": "tsx scripts/ops-source-access-init.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -40,6 +52,7 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.0",
     "@types/node": "^22.18.0",
     "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-vue": "^6.0.1",

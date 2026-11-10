@@ -1,5 +1,6 @@
+import {durableWriteJson} from './durable-store.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Annotation, BranchItem, CommitDetail, CommitItem, DiffFile, FileTreeNode, RepoSummary, WorkspaceItem } from '../../../packages/shared/src/index.js';
 import { ApiError } from './errors.js';
@@ -8,7 +9,7 @@ import type { CreateRepo, MergeOptions, NativeMergeResolutionInput, Provider, Re
 import { safeFilePath, safeRef, safeSegment } from './safety.js';
 import { validateDataFile } from './jsonl.js';
 
-interface StoredWorkspace extends WorkspaceItem { staged: Record<string, string> }
+interface StoredWorkspace extends WorkspaceItem { staged: Record<string, string>;removed?:string[] }
 interface StoredCommit extends CommitDetail { snapshot: Record<string, string> }
 interface StoredRepo { summary: RepoSummary; branches: BranchItem[]; commits: StoredCommit[]; workspaces: StoredWorkspace[]; annotations: Array<Annotation & { commitId?: string }> }
 interface DemoState { version: 1; repos: StoredRepo[] }
@@ -69,13 +70,11 @@ export class DemoProvider implements Provider {
   }
   private async save(): Promise<void> {
     await mkdir(path.dirname(this.filename), { recursive: true });
-    const temporary = `${this.filename}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(this.state, null, 2), { mode: 0o600 });
-    await rename(temporary, this.filename);
+    await durableWriteJson(this.filename,this.state);
   }
-  private mutate<T>(operation: () => T): Promise<T> {
+  private mutate<T>(operation: () => T|Promise<T>): Promise<T> {
     let result!: T;
-    const next = this.chain.then(async () => { const backup = structuredClone(this.state); try { result = operation(); await this.save(); } catch (error) { this.state = backup; throw error; } });
+    const next = this.chain.then(async () => { const backup = structuredClone(this.state); try { result = await operation(); await this.save(); } catch (error) { this.state = backup; throw error; } });
     this.chain = next.catch(() => {});
     return next.then(() => structuredClone(result));
   }
@@ -95,7 +94,7 @@ export class DemoProvider implements Provider {
     if (!result) throw new ApiError(404, 'WORKSPACE_NOT_FOUND', 'Workspace not found.');
     return result;
   }
-  private publicWorkspace(workspace: StoredWorkspace): WorkspaceItem { const { staged: _staged, ...result } = workspace; return structuredClone(result); }
+  private publicWorkspace(workspace: StoredWorkspace): WorkspaceItem { const { staged: _staged,removed:_removed, ...result } = workspace; return structuredClone(result); }
   async repos(namespace?: string) { return structuredClone(this.state.repos.filter(repo => !namespace || repo.summary.namespace === namespace).map(repo => repo.summary)); }
   async repo(key: RepoKey) { return structuredClone(this.find(key).summary); }
   async createRepo(input: CreateRepo) {
@@ -203,14 +202,21 @@ export class DemoProvider implements Provider {
     if (value === undefined) throw new ApiError(404, 'FILE_NOT_FOUND', 'File not found in workspace.');
     return makePreview(filename, Buffer.from(value, 'base64'), '', 1, 100);
   }
+  async rawWorkspaceFile(key:RepoKey,id:string,filename:string){const repo=this.find(key),workspace=this.ws(repo,id),name=safeFilePath(filename),value=workspace.removed?.includes(name)?undefined:workspace.staged[name]??this.at(repo,workspace.baseCommitId??workspace.branch).snapshot[name];if(value===undefined)throw new ApiError(404,'FILE_NOT_FOUND','File not found in workspace.');return{content:Buffer.from(value,'base64'),mime:mimeFor(name),filename:path.posix.basename(name)};}
   async deleteWorkspace(key: RepoKey, id: string) { await this.mutate(() => { const repo = this.find(key); this.ws(repo, id); repo.workspaces = repo.workspaces.filter(workspace => workspace.id !== id); }); }
   async writeWorkspace(key: RepoKey, id: string, filename: string, content: Buffer) {
     validateDataFile(filename, content);
     return this.mutate(() => { safeFilePath(filename); const repo = this.find(key), workspace = this.ws(repo, id), snapshot = this.at(repo, workspace.branch).snapshot; workspace.staged[filename] = content.toString('base64'); workspace.changes = Object.keys(workspace.staged).filter(path => workspace.staged[path] !== snapshot[path]).map(path => ({ path, status: snapshot[path] === undefined ? 'added' : 'modified' })); return this.publicWorkspace(workspace); });
   }
+  async writeWorkspaceBatch(key:RepoKey,id:string,files:ReadonlyArray<{path:string;content:Buffer}>){
+    // Validate and snapshot all caller bytes before entering the single durable mutation.
+    const staged=files.map(file=>{const filename=safeFilePath(file.path);validateDataFile(filename,file.content);return {filename,value:file.content.toString('base64')};});
+    return this.mutate(()=>{const repo=this.find(key),workspace=this.ws(repo,id),snapshot=this.at(repo,workspace.branch).snapshot;for(const file of staged)workspace.staged[file.filename]=file.value;workspace.changes=Object.keys(workspace.staged).filter(filename=>workspace.staged[filename]!==snapshot[filename]).map(filename=>({path:filename,status:snapshot[filename]===undefined?'added':'modified'}));return this.publicWorkspace(workspace);});
+  }
   private updateSummary(repo: StoredRepo, commit: StoredCommit) { if (repo.branches.find(branch => branch.name === repo.summary.defaultBranch)?.commitId === commit.id) { repo.summary.updatedAt = commit.timestamp; repo.summary.fileCount = Object.keys(commit.snapshot).length; repo.summary.size = Object.values(commit.snapshot).reduce((sum, value) => sum + Buffer.from(value, 'base64').length, 0); } }
-  async commitWorkspace(key: RepoKey, id: string, message: string, expectedCommit?: string): Promise<CommitItem> {
-    return this.mutate(() => { const repo = this.find(key), workspace = this.ws(repo, id), branch = repo.branches.find(item => item.name === workspace.branch)!; if (expectedCommit && branch.commitId !== expectedCommit) throw new ApiError(409, 'LABEL_VERSION_CONFLICT', '分支已更新，请重新加载当前版本后再保存。'); if (!workspace.changes.length) throw new ApiError(409, 'NO_CHANGES', 'Workspace has no staged changes.'); const previous = this.at(repo, workspace.branch), snapshot = { ...previous.snapshot, ...workspace.staged }; const next = commit(message, snapshot, [previous.id], diffSnapshots(previous.snapshot, snapshot)); repo.commits.unshift(next); branch.commitId = next.id; workspace.staged = {}; workspace.changes = []; this.updateSummary(repo, next); const { files: _files, snapshot: _snapshot, ...result } = next; return result; });
+  async removeWorkspaceFiles(key:RepoKey,id:string,filenames:string[]){return this.mutate(()=>{const repo=this.find(key),workspace=this.ws(repo,id),snapshot=this.at(repo,workspace.branch).snapshot;for(const name of filenames){const filename=safeFilePath(name);if(snapshot[filename]===undefined)throw new ApiError(404,'FILE_NOT_FOUND','删除暂存的文件不存在。');workspace.removed=[...new Set([...(workspace.removed??[]),filename])];delete workspace.staged[filename];}workspace.changes=[...workspace.changes.filter(change=>!filenames.includes(change.path)),...filenames.map(filename=>({path:filename,status:'removed' as const}))];});}
+  async commitWorkspace(key: RepoKey, id: string, message: string, expectedCommit?: string,beforeWrite?:()=>Promise<void>): Promise<CommitItem> {
+    return this.mutate(async () => {await beforeWrite?.(); const repo = this.find(key), workspace = this.ws(repo, id), branch = repo.branches.find(item => item.name === workspace.branch)!; if (expectedCommit && branch.commitId !== expectedCommit) throw new ApiError(409, 'LABEL_VERSION_CONFLICT', '分支已更新，请重新加载当前版本后再保存。'); if (!workspace.changes.length) throw new ApiError(409, 'NO_CHANGES', 'Workspace has no staged changes.'); const previous = this.at(repo, workspace.branch), snapshot = { ...previous.snapshot, ...workspace.staged };for(const filename of workspace.removed??[])delete snapshot[filename]; const next = commit(message, snapshot, [previous.id], diffSnapshots(previous.snapshot, snapshot)); repo.commits.unshift(next); branch.commitId = next.id; workspace.staged = {};workspace.removed=[]; workspace.changes = []; this.updateSummary(repo, next); const { files: _files, snapshot: _snapshot, ...result } = next; return result; });
   }
   async annotations(key: RepoKey, filename?: string, reference = 'main') { const repo = this.find(key), commitId = this.at(repo, reference).id; return structuredClone(repo.annotations.filter(annotation => annotation.commitId === commitId && (!filename || annotation.path === filename))); }
   async legacyAnnotations(key: RepoKey, reference: string): Promise<Annotation[]> {

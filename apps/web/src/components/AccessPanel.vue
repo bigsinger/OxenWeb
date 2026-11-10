@@ -8,7 +8,7 @@ const emit = defineEmits<{ changed: [] }>();
 const state = ref<RepositoryAccessState | null>(null), loading = ref(false), busy = ref(false), error = ref('');
 const name = ref(''), role = ref<RepositoryRole>('viewer'), oneTimeToken = ref(''), copied = ref(false);
 const roles: { value: RepositoryRole; label: string }[] = [{ value: 'viewer', label: '只读 · Viewer' }, { value: 'annotator', label: '标注 · Annotator' }, { value: 'editor', label: '编辑与标注 · Editor' }, { value: 'reviewer', label: '复核 · Reviewer' }, { value: 'lead', label: '数据集负责人 · Lead' }, { value: 'admin', label: '项目管理 · Admin' }];
-const capabilities: {id:DatasetCapability;label:string}[]=[{id:'data.edit',label:'编辑样本正文'},{id:'dataset.assign',label:'填写项目标签'},{id:'annotation.assign',label:'填写样本 / 文件标签'},{id:'annotation.review',label:'独立复核'},{id:'tasks.manage',label:'分配任务'},{id:'schema.bind',label:'绑定已发布规范'},{id:'merge.execute',label:'执行合并'},{id:'release.manage',label:'管理 Release'},{id:'release.share',label:'创建分享'},{id:'data.export',label:'导出数据'},{id:'project.admin',label:'项目权限管理'}];
+const capabilities: {id:DatasetCapability;label:string}[]=[{id:'data.edit',label:'编辑样本正文'},{id:'dataset.assign',label:'填写项目标签'},{id:'annotation.assign',label:'填写样本 / 文件标签'},{id:'annotation.review',label:'独立复核'},{id:'tasks.manage',label:'分配任务'},{id:'schema.bind',label:'绑定已发布规范'},{id:'merge.execute',label:'执行合并'},{id:'release.manage',label:'管理 Release'},{id:'release.share',label:'创建分享'},{id:'release.hidden',label:'受限主库及隐藏评测访问（谨慎授予）'},{id:'data.export',label:'导出数据'},{id:'project.admin',label:'项目权限管理'}];
 const memberCapabilities=ref<Record<string,DatasetCapability[]>>({});
 const roleDefaults:Record<RepositoryRole,DatasetCapability[]>={viewer:['read','data.export'],annotator:['read','annotation.assign','data.export'],editor:['read','data.edit','annotation.assign','data.export'],reviewer:['read','annotation.review','data.export'],lead:['read','dataset.assign','tasks.manage','schema.bind','merge.execute','release.manage','release.share','data.export'],admin:['read',...capabilities.map(item=>item.id)]};
 let sequence = 0;
@@ -47,7 +47,7 @@ watch(() => [props.base, props.enabled], () => { oneTimeToken.value = ''; copied
   <article class="panel access-card" aria-label="协作访问控制">
     <header><Users :size="19" /><div><h3>用户与协作者</h3><p class="muted">管理项目成员，以及每位成员的访问权限。</p></div><span v-if="state" class="badge">{{state.collaborators.length+1}} 位成员</span></header>
     <div class="access-body">
-      <p v-if="enabled === false" class="muted">仅仓库管理员可以管理成员与令牌。</p>
+      <p v-if="enabled!==false" class="notice">在<RouterLink to="/access">全局访问管理</RouterLink>为已有人员发放项目令牌、设置到期时间；在<RouterLink to="/account/tokens">我的访问令牌</RouterLink>核对已发放的摘要、轮换和撤销。项目成员的角色与独立能力仍可在下方维护。</p><p v-if="enabled === false" class="muted">仅仓库管理员可以管理成员与令牌。</p>
       <template v-else>
         <details class="access-note"><summary>本地身份与权限说明</summary><p>协作者使用独立令牌登录，访问策略由此 Web 服务执行，不修改 Oxen 云端权限。<span v-if="state?.localOwnerEnabled">当前为本机所有者兼容模式；协作者应使用自己的令牌。</span></p></details>
         <p v-if="error" class="error-state" role="alert">{{ error }} <button class="btn btn-ghost" type="button" @click="load">重新加载</button></p>

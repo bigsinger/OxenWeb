@@ -1,0 +1,82 @@
+{
+  "date": "2026-11-09",
+  "mode": "local Web/BFF extension",
+  "unitTests": {
+    "failed": 0,
+    "total": 527,
+    "passed": 520,
+    "skipped": 7
+  },
+  "realDefinitionAdoption": {
+    "passed": true,
+    "projects": [
+      {
+        "namespace": "local",
+        "repo": "benchmark-sensitive-data",
+        "rows": 2000,
+        "status": "updated",
+        "globalFieldsPresent": true,
+        "sourceAndAllEffectiveRecordsUnchanged": true,
+        "labelsEvaluationActivityUnchanged": true,
+        "privateInputsAndOtherBranchesUnchanged": true,
+        "unclassifiedValuesLeftUntouched": true
+      },
+      {
+        "namespace": "local",
+        "repo": "benchmark-prompt-injection",
+        "rows": 2000,
+        "status": "updated",
+        "globalFieldsPresent": true,
+        "sourceAndAllEffectiveRecordsUnchanged": true,
+        "labelsEvaluationActivityUnchanged": true,
+        "privateInputsAndOtherBranchesUnchanged": true,
+        "unclassifiedValuesLeftUntouched": true
+      },
+      {
+        "namespace": "local",
+        "repo": "benchmark-skills",
+        "rows": 1000,
+        "status": "updated",
+        "globalFieldsPresent": true,
+        "sourceAndAllEffectiveRecordsUnchanged": true,
+        "labelsEvaluationActivityUnchanged": true,
+        "privateInputsAndOtherBranchesUnchanged": true,
+        "unclassifiedValuesLeftUntouched": true
+      },
+      {
+        "namespace": "local",
+        "repo": "benchmark-behavior-drift",
+        "rows": 1719,
+        "status": "updated",
+        "globalFieldsPresent": true,
+        "sourceAndAllEffectiveRecordsUnchanged": true,
+        "labelsEvaluationActivityUnchanged": true,
+        "privateInputsAndOtherBranchesUnchanged": true,
+        "unclassifiedValuesLeftUntouched": true
+      }
+    ],
+    "rawBodiesSentExternally": false,
+    "rows": 6719,
+    "catalogRevision": 1,
+    "onlyDefinitions": true,
+    "recordsAssigned": false
+  },
+  "browser": {
+    "globalNarrowDocumentWidth": 380,
+    "desktop": 1280,
+    "syntheticOnly": true,
+    "consoleErrors": 0,
+    "scope": "Catalog save/reload/sync, project protected fields and checkbox saves, bounded widths, custom deletion, multi-purpose private draft; production catalog read smoke",
+    "narrow": 390
+  },
+  "officialOxen": "0.67.0",
+  "kernelModified": false,
+  "realReleasePublished": false,
+  "nativeSummary": "native-reconciliation-summary.json",
+  "sourceFieldValues": "existing preserved; missing unassigned",
+  "postColdBackupReadVerification": {
+    "passed": true,
+    "rows": 6719,
+    "headsAndAllHashesUnchanged": true
+  }
+}

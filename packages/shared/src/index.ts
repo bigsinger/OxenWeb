@@ -1,7 +1,10 @@
 import type { RepoCatalogFields } from './catalog-types.js';
 export * from './catalog-types.js';
 export * from './field-metadata.js';
+export * from './field-order.js';
+export * from './field-option-colors.js';
 export * from './source-record.js';
+export * from './repository-history.js';
 export * from './project-label-types.js';
 
 export interface RepoSummary extends RepoCatalogFields {
@@ -109,6 +112,8 @@ export type RepositoryRole = 'viewer' | 'annotator' | 'editor' | 'reviewer' | 'l
 export interface RequestIdentity {
   id: string; name: string; kind: 'owner' | 'collaborator' | 'guest';
   source: 'local' | 'bearer' | 'session' | 'anonymous';
+  /** Authentication credential, separate from stable actor identity; never contains the token. */
+  credentialId?: string;
 }
 export interface RepositoryCollaborator { id: string; name: string; role: RepositoryRole; createdAt: string; capabilities?: import('./governance-types.js').DatasetCapability[] }
 export interface RepositoryPolicy {
@@ -170,3 +175,5 @@ export * from './dataset-field-types.js';
 export * from './dataset-field-validation.js';
 export * from './dataset-ui-state.js';
 export * from './repository-management.js';
+export * from './evaluation.js';
+export * from './global-fields.js';

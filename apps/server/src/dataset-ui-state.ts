@@ -1,5 +1,6 @@
+import {durableWriteFile} from './durable-store.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type { DatasetUiJsonValue, DatasetUiState, DatasetUiStateDeleteInput, DatasetUiStateKind, DatasetUiStateResult, DatasetUiStateSaveInput } from '../../../packages/shared/src/dataset-ui-state.js';
@@ -10,7 +11,9 @@ import { ApiError } from './errors.js';
 import { safeRef } from './safety.js';
 
 const MAX_PAYLOAD=24*1024*1024;
-const kind=z.enum(['workbench','field-settings','readme']);
+const kind=z.enum(['workbench','field-settings','readme','table-layout']);
+const layoutPayload=z.object({version:z.literal(1),order:z.array(z.string().min(1).max(6000)).max(520).refine(ids=>new Set(ids).size===ids.length,'列顺序不能重复。'),widths:z.record(z.string().min(1).max(6000),z.number().int().min(72).max(1200)).refine(values=>Object.keys(values).length<=520,'最多保存520个源字段与系统列。')}).strict();
+function assertLayoutPayload(type:DatasetUiStateKind,value:unknown){if(type==='table-layout')layoutPayload.parse(value);}
 const ref=z.string().transform(safeRef);
 function isJson(value:unknown):value is DatasetUiJsonValue{
   const stack:Array<{value:unknown;depth:number}>=[{value,depth:0}],seen=new WeakSet<object>();let count=0;
@@ -36,6 +39,7 @@ export class DatasetUiStateService {
   private lock<T>(filename:string,work:()=>Promise<T>):Promise<T>{const result=(this.chains.get(filename)??Promise.resolve()).then(work),done=result.then(()=>{},()=>{});this.chains.set(filename,done);void done.then(()=>{if(this.chains.get(filename)===done)this.chains.delete(filename);});return result;}
   private async authorize(key:RepoKey,identity:RequestIdentity){principal(identity);await this.options.access.requireCapability(key,identity,'read');}
   private async mayCreate(key:RepoKey,identity:RequestIdentity,type:DatasetUiStateKind){
+    if(type==='table-layout'){await this.options.access.requireCapability(key,identity,'read');return;}
     const capabilities:DatasetCapability[]=type==='field-settings'?['schema.bind']:type==='readme'?['data.edit']:['data.edit','annotation.assign'];
     for(const capability of capabilities)try{await this.options.access.requireCapability(key,identity,capability);return;}catch(error){if(!(error instanceof ApiError)||error.status!==403)throw error;}
     throw new ApiError(403,'UI_STATE_CAPABILITY_REQUIRED','当前身份不能新建此类编辑检查点；本人已有检查点仍可取回或保留。');
@@ -45,17 +49,16 @@ export class DatasetUiStateService {
     try{if((await stat(filename)).size>MAX_PAYLOAD+4096)throw new ApiError(413,'UI_STATE_LIMIT','检查点文件超出上限，未删除原文件。');content=await readFile(filename);}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return undefined;throw error;}
     let parsed:z.infer<typeof storedSchema>;try{parsed=storedSchema.parse(JSON.parse(content.toString('utf8')));}catch{throw new ApiError(422,'UI_STATE_INVALID','本人界面检查点格式无效，原文件已保留。');}
     if(parsed.namespace!==key.namespace||parsed.repo!==key.repo||parsed.owner!==principal(identity)||parsed.state.ref!==branch||parsed.state.kind!==type)throw new ApiError(422,'UI_STATE_INVALID','检查点身份、项目、分支或类型不匹配。');
-    return parsed.state;
+    assertLayoutPayload(type,parsed.state.payload);return parsed.state;
   }
   async read(key:RepoKey,identity:RequestIdentity,branch:string,type:DatasetUiStateKind):Promise<DatasetUiStateResult>{await this.authorize(key,identity);const state=await this.stored(key,identity,safeRef(branch),kind.parse(type));return state?{state}:{};}
   async save(key:RepoKey,identity:RequestIdentity,input:DatasetUiStateSaveInput):Promise<DatasetUiStateResult>{
-    const parsed=uiStateSaveSchema.parse(input),filename=this.filename(key,identity,parsed.ref,parsed.kind);return this.lock(filename,async()=>{
+    const parsed=uiStateSaveSchema.parse(input);assertLayoutPayload(parsed.kind,parsed.payload);const filename=this.filename(key,identity,parsed.ref,parsed.kind);return this.lock(filename,async()=>{
       await this.authorize(key,identity);const existing=await this.stored(key,identity,parsed.ref,parsed.kind);
       if((existing?.revision??0)!==parsed.revision||existing?.id!==parsed.expectedId)throw new ApiError(409,'UI_STATE_REVISION_CONFLICT','本人界面检查点已在另一个页面更新，当前输入未覆盖该版本。');
       if(!existing)await this.mayCreate(key,identity,parsed.kind);
       const state:DatasetUiState={id:existing?.id??randomUUID(),ref:parsed.ref,kind:parsed.kind,revision:parsed.revision+1,...(parsed.baseCommit?{baseCommit:parsed.baseCommit}:{}),payload:parsed.payload,updatedAt:new Date().toISOString()};
-      const serialized=JSON.stringify({version:1,...key,owner:principal(identity),state});await mkdir(path.dirname(filename),{recursive:true,mode:0o700});const temporary=filename+'.'+randomUUID()+'.tmp';
-      try{await writeFile(temporary,serialized,{encoding:'utf8',mode:0o600,flag:'wx'});await this.authorize(key,identity);if(!existing)await this.mayCreate(key,identity,parsed.kind);await rename(temporary,filename);}finally{await rm(temporary,{force:true}).catch(()=>{});}
+      const serialized=JSON.stringify({version:1,...key,owner:principal(identity),state});await mkdir(path.dirname(filename),{recursive:true,mode:0o700});await durableWriteFile(filename,serialized,{beforeReplace:async()=>{await this.authorize(key,identity);if(!existing)await this.mayCreate(key,identity,parsed.kind);}});
       return {state:JSON.parse(JSON.stringify(state)) as DatasetUiState};
     });
   }

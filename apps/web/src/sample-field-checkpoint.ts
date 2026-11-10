@@ -22,13 +22,19 @@ export function parseSampleFieldCheckpoint(value:unknown):SampleFieldFormCheckpo
   for(const key of ['selected','search','newId','message'])if(typeof value[key]!=='string')throw new Error('配置草稿的页面状态不完整。');
   const ids=new Set<string>();
   for(const field of value.drafts){
-    if(!isObject(field)||typeof field.id!=='string'||!field.id||ids.has(field.id)||!Array.isArray(field.options)||!controls.has(String(field.control))||!scalars.has(String(field.optionType))||!['auto','fixed','weight'].includes(String(field.widthMode)))throw new Error('配置草稿包含无法识别的字段控件。');
+    if(!isObject(field)||typeof field.id!=='string'||!field.id||ids.has(field.id)||!Array.isArray(field.options)||!controls.has(String(field.control))||!scalars.has(String(field.optionType)))throw new Error('配置草稿包含无法识别的字段控件。');
     ids.add(field.id);
-    for(const key of ['displayName','description','initial','widthValue'])if(typeof field[key]!=='string')throw new Error('配置草稿的字段输入不完整。');
+    for(const key of ['displayName','description','initial'])if(typeof field[key]!=='string')throw new Error('配置草稿的字段输入不完整。');
     for(const key of ['enabled','displayNameSet','descriptionSet','nullable','required','nullableSet','requiredSet'])if(typeof field[key]!=='boolean')throw new Error('配置草稿的显式字段状态不完整。');
-    for(const option of field.options)if(!isObject(option)||!['string','number','boolean'].includes(String(option.type))||typeof option.text!=='string')throw new Error('配置草稿的原始选项输入不完整。');
+    if(field.order!==undefined&&(typeof field.order!=='number'||!Number.isSafeInteger(field.order)||field.order<0))throw new Error('配置草稿的字段顺序无效。');
+    if(field.export!==undefined&&typeof field.export!=='boolean')throw new Error('配置草稿的导出选项无效。');
+    if(field.visible!==undefined&&typeof field.visible!=='boolean')throw new Error('配置草稿的展示选项无效。');
+    for(const option of field.options)if(!isObject(option)||!['string','number','boolean'].includes(String(option.type))||typeof option.text!=='string'||option.color!==undefined&&(typeof option.color!=='string'||!/^#[0-9a-f]{6}$/i.test(option.color)))throw new Error('配置草稿的原始选项输入不完整。');
   }
-  return clone(value as unknown as SampleFieldFormCheckpoint);
+  const normalized=clone(value as unknown as SampleFieldFormCheckpoint);
+  // Obsolete width controls are discarded, while other unfinished inputs remain recoverable.
+  for(const draft of normalized.drafts){const old=draft as unknown as Record<string,unknown>;for(const key of ['widthMode','widthValue','widthMin','widthMax'])delete old[key];try{const initial=JSON.parse(draft.initial);for(const key of ['widthMode','widthValue','widthMin','widthMax'])delete initial[key];draft.initial=JSON.stringify(initial);}catch{/* Existing validation still protects unfinished field inputs. */}}
+  return normalized;
 }
 export function sampleFieldCheckpointChanges(checkpoint:SampleFieldFormCheckpoint,current:DatasetFieldsState){
   const ids=[...new Set([...Object.keys(checkpoint.baseConfiguration),...Object.keys(current.configuration)])];

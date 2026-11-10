@@ -44,7 +44,10 @@ export function datasetPageRows(rows: Record<string, unknown>[], rowIds: string[
 
 export function stageDatasetRemoval<T extends { rowId: string }>(operations: DatasetOperation[], rowId: string, expectedContentHash: string | undefined, editor?: T): { operations: DatasetOperation[]; editor?: T } {
   const appended = operations.some(op => op.op === 'append' && op.rowId === rowId);
-  const remaining = operations.filter(op => !('rowId' in op && op.rowId === rowId));
+  const remaining = operations.flatMap<DatasetOperation>(op => {
+    if (op.op === 'evaluation') { const rowIds = op.rowIds.filter(id => id !== rowId); return rowIds.length ? [{ ...op, rowIds }] : []; }
+    return 'rowId' in op && op.rowId === rowId ? [] : [op];
+  });
   return { operations: appended ? remaining : [...remaining, { op: 'delete', rowId, ...(expectedContentHash ? { expectedContentHash } : {}) }], ...(editor && editor.rowId !== rowId ? { editor } : {}) };
 }
 

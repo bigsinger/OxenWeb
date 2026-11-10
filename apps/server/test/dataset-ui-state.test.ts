@@ -10,6 +10,18 @@ import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 
 const owner:RequestIdentity={id:'owner',name:'Synthetic owner',kind:'owner',source:'local'},other:RequestIdentity={id:'other',name:'Synthetic other',kind:'collaborator',source:'bearer'},key={namespace:'local',repo:'ui-state-fixture'};
+test('personal table layouts persist for read-only members without touching sample branches and use actor/ref CAS',async t=>{
+  const f=await fixture(t);f.setWrite(false);
+  const payload={version:1,order:['source:text','system:human-labels','source:id'],widths:{'source:text':640,'source:id':96}};
+  const longId='source:'+encodeURIComponent('字'.repeat(500));
+  const unicodeSaved=await f.service.save(key,other,{kind:'table-layout',ref:'unicode',revision:0,payload:{version:1,order:[longId],widths:{[longId]:240}}});assert.equal((unicodeSaved.state!.payload as {order:string[]}).order[0],longId);
+  const saved=(await f.service.save(key,other,{kind:'table-layout',ref:'main',revision:0,payload})).state!;
+  assert.equal(saved.revision,1);assert.deepEqual((await f.service.read(key,other,'main','table-layout')).state?.payload,payload);
+  assert.deepEqual(await f.service.read(key,owner,'main','table-layout'),{});assert.deepEqual(await f.service.read(key,other,'other','table-layout'),{});
+  await assert.rejects(f.service.save(key,other,{kind:'table-layout',ref:'main',revision:0,payload}),{code:'UI_STATE_REVISION_CONFLICT'});
+  for(const bad of [{...payload,order:['source:id','source:id']},{...payload,widths:{'source:id':71}},{...payload,widths:{'source:id':1201}},{...payload,widths:{'source:id':100.5}}])await assert.rejects(f.service.save(key,other,{kind:'table-layout',ref:'main',revision:1,expectedId:saved.id,payload:bad}));
+  f.setRead(false);await assert.rejects(f.service.read(key,other,'main','table-layout'),{code:'CAPABILITY_REQUIRED'});
+});
 async function fixture(t:{after:(work:()=>Promise<void>)=>void}){
   const root=path.resolve('.data/tests');await mkdir(root,{recursive:true});const directory=await mkdtemp(path.join(root,'ui-state-'));
   t.after(async()=>{if(!path.resolve(directory).startsWith(root+path.sep))throw new Error('Unsafe fixture cleanup');await rm(directory,{recursive:true,force:true});});

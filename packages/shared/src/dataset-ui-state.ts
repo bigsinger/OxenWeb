@@ -1,5 +1,5 @@
 /** Identity-isolated BFF recovery data, independent of valid sample drafts and Git versions. */
-export type DatasetUiStateKind = 'workbench' | 'field-settings' | 'readme';
+export type DatasetUiStateKind = 'workbench' | 'field-settings' | 'readme' | 'table-layout';
 export type DatasetUiJsonValue = null | boolean | number | string | DatasetUiJsonValue[] | { [key: string]: DatasetUiJsonValue };
 export interface DatasetUiState {
   id: string; ref: string; kind: DatasetUiStateKind; revision: number;

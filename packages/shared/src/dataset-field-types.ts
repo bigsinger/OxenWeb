@@ -7,7 +7,12 @@ export interface DatasetFieldSummary {
 export interface DatasetFieldsState {
   ref: string; commitId: string; path: string; totalRows: number;
   configuration: Record<string, DatasetFieldMetadata>; fields: DatasetFieldSummary[];
-  protectedFields: string[]; capabilities: { edit: boolean };
+  protectedFields: string[]; capabilities: { edit: boolean; delete?: boolean };
+  globalFields?: { active: string[]; retired: string[] };
+}
+/** Local BFF extension: removes an editable source key from current records in one new commit. */
+export interface DatasetFieldDeleteInput {
+  ref: string; expectedCommit: string; fieldId: string; confirmFieldId: string; message?: string;
 }
 export interface DatasetFieldsSaveInput {
   ref: string; expectedCommit: string; fields: Record<string, DatasetFieldMetadata>; message?: string;

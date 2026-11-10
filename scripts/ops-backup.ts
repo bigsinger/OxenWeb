@@ -1,0 +1,42 @@
+/** Cold, whole-instance backup tool. Never executes dataset/Skill contents. */
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {lstat,readFile} from 'node:fs/promises';
+import {loadConfig,projectRoot} from '../apps/server/src/config.js';
+import {createColdBackup,decryptBackup,encryptBackup,estimateBackupSources,restoreBackup,verifyBackup,type BackupSource} from '../apps/server/src/backup.js';
+import {APPLICATION_VERSION} from '../packages/shared/src/version.js';
+import {runtimeAuthority} from '../apps/server/src/instance-runtime.js';
+import {runtimeBuildProvenance} from '../apps/server/src/runtime-build.js';
+import {controlBackupSources} from '../apps/server/src/backup-control-sources.js';
+for(const filename of [path.join(projectRoot,'.env'),path.join(projectRoot,'infra/oxen/local.env')])try{process.loadEnvFile(filename);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+const config=loadConfig(),args=process.argv.slice(2),command=args.shift()??'plan';
+function argument(name:string,required=false){const index=args.indexOf('--'+name),value=index<0?undefined:args[index+1];if(required&&!value)throw new Error('--'+name+' is required');return value;}
+const exists=async(filename:string)=>{try{await lstat(filename);return true;}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return false;throw error;}};
+const processAlive=(pid:number)=>{try{process.kill(pid,0);return true;}catch(error){return(error as NodeJS.ErrnoException).code==='EPERM';}};
+async function inventory(){const infra=path.join(projectRoot,'infra/oxen'),control=path.dirname(config.demoFile),sources:BackupSource[]=[];
+  if(config.demo)sources.push({id:'oxen-demo',root:config.demoFile,kind:'oxen',required:true});else{
+    const managed=JSON.parse(await readFile(path.join(infra,'run/server.json'),'utf8')),projectId=createHash('sha256').update(path.resolve(projectRoot).toLowerCase()).digest('hex').slice(0,16);if(managed.projectId!==projectId||runtimeAuthority({...config,upstream:managed.origin})!==runtimeAuthority(config))throw new Error('Configured upstream is not this checkout’s managed Oxen authority');
+    if(process.platform==='win32'){const pointer=JSON.parse(await readFile(path.join(infra,'run/data-location.json'),'utf8'));if(pointer.projectId!==projectId||typeof pointer.nativeDataDirectory!=='string'||!pointer.nativeDataDirectory.startsWith('/home/')||pointer.nativeDataDirectory.includes('..')||!/^[A-Za-z0-9._-]+$/.test(pointer.distribution))throw new Error('Managed WSL storage pointer is invalid');sources.push({id:'oxen-native',root:'\\\\wsl.localhost\\'+pointer.distribution+pointer.nativeDataDirectory.replaceAll('/','\\'),kind:'oxen',required:true});sources.push({id:'oxen-pointer',root:path.join(infra,'run/data-location.json'),kind:'configuration',required:true});}
+    else sources.push({id:'oxen-native',root:path.join(infra,'data'),kind:'oxen',required:true});
+  }
+  sources.push(...controlBackupSources(control));
+  sources.push({id:'cli-checkouts',root:config.cliRoot,kind:'cli'});for(const [id,filename]of [['root-env',path.join(projectRoot,'.env')],['local-env',path.join(infra,'local.env')],['client-config',path.join(infra,'config/client')],['server-config',path.join(infra,'config/server')],['installed-version',path.join(infra,'run/installed.json')],['source-package',path.join(projectRoot,'package.json')],['fixed-contract',path.join(projectRoot,'contracts/oxen_server_openapi.json')]])sources.push({id:id!,root:filename!,kind:'configuration'});
+  for(const [id,filename]of [['server-build','apps/server/dist'],['web-build','apps/web/dist'],['node-lockfile','package-lock.json'],['server-package','apps/server/package.json'],['web-package','apps/web/package.json'],['shared-package','packages/shared/package.json'],['contracts-package','packages/contracts/package.json']])sources.push({id:id!,root:path.join(projectRoot,filename!),kind:'configuration',required:true});
+  sources.push({id:'previous-backup-receipt',root:path.join(control,'operations/last-backup.json'),kind:'control'});
+  sources.push({id:'pre-backup-inventory',root:path.join(control,'operations/backup-read-inventory.json'),kind:'control'});
+  return sources;
+}
+async function quiescent(){const lock=path.join(path.dirname(config.demoFile),'.oxen-web-instance.lock');if(await exists(lock)){const value=JSON.parse(await readFile(lock,'utf8'));if(Number.isInteger(value.pid)&&processAlive(value.pid))throw new Error('BFF is still active; drain and stop it before cold backup');}
+  const destinations=['http://'+(config.host==='0.0.0.0'?'127.0.0.1':config.host)+':'+config.port+'/api/status',...(!config.demo&&config.upstream?[runtimeAuthority(config).slice('oxen:'.length)+'/api/version']:[])];for(const destination of destinations){let active=false;try{await fetch(destination,{signal:AbortSignal.timeout(1500)});active=true;}catch{/* stopped services do not answer */}if(active)throw new Error('A managed writer is still responding; cold backup was refused');}
+}
+function encryptionKey(){const value=process.env.OXEN_BACKUP_KEY;if(!value)throw new Error('Set OXEN_BACKUP_KEY to a protected base64-encoded 32-byte key');const key=Buffer.from(value,'base64');if(key.length!==32)throw new Error('OXEN_BACKUP_KEY must decode to exactly 32 bytes');return key;}
+try{
+ if(command==='plan'){const sources=await inventory();console.log(JSON.stringify({operation:'cold-backup-plan',authority:config.demo?'demo':config.upstream,sources:await Promise.all(sources.map(async source=>({...source,present:await exists(source.root)}))),requirements:['Stop all BFF and direct Oxen writers before creating a generation','Keep local backup outside all source directories','Use --encrypted-copy with OXEN_BACKUP_KEY for a separate offline/encrypted copy','Do not place encryption keys in this repository'],secretsPrinted:false},null,2));}
+ else if(command==='estimate'){console.log(JSON.stringify(await estimateBackupSources(await inventory()),null,2));}
+ else if(command==='create'){const sources=await inventory(),destination=path.resolve(argument('destination',true)!);await quiescent();const runtime=await runtimeBuildProvenance(projectRoot),result=await createColdBackup({sources,destination,authority:runtimeAuthority(config),applicationVersion:APPLICATION_VERSION,oxenVersion:'0.67.0',runtime,assertQuiescent:quiescent});const encrypted=argument('encrypted-copy');const mirror=encrypted?await encryptBackup(destination,path.resolve(encrypted),encryptionKey()):undefined;console.log(JSON.stringify({generation:result.generation,cutAt:result.cutAt,files:result.files.length,totalBytes:result.totalBytes,localVerified:true,runtime,encryptedCopy:mirror??'not-configured',offsiteVerified:false}));}
+ else if(command==='verify'){const result=await verifyBackup(path.resolve(argument('backup',true)!));console.log(JSON.stringify({generation:result.generation,files:result.files.length,totalBytes:result.totalBytes,verified:true}));}
+ else if(command==='encrypt'){console.log(JSON.stringify(await encryptBackup(path.resolve(argument('backup',true)!),path.resolve(argument('destination',true)!),encryptionKey())));}
+ else if(command==='decrypt'){const result=await decryptBackup(path.resolve(argument('backup',true)!),path.resolve(argument('destination',true)!),encryptionKey());console.log(JSON.stringify({generation:result.generation,decryptedAndVerified:true}));}
+ else if(command==='restore'){const backup=path.resolve(argument('backup',true)!),destination=path.resolve(argument('destination',true)!);const receipt=await restoreBackup({backup,destination,assertIsolated:async target=>{for(const protectedRoot of [path.dirname(config.demoFile),config.cliRoot,path.join(projectRoot,'infra/oxen/data')]){const relative=path.relative(path.resolve(protectedRoot),target);if(relative===''||relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))throw new Error('Restore target must be outside active control, CLI and Oxen storage; use a fresh isolation directory');}}});console.log(JSON.stringify({...receipt,sessionRestored:false,teamAccessEnabled:false}));}
+ else throw new Error('Use plan | create --destination PATH [--encrypted-copy FILE] | verify --backup PATH | encrypt/decrypt --backup PATH --destination PATH | restore --backup PATH --destination NEW_ISOLATED_PATH');
+}catch(error){console.error(error instanceof Error?error.message:'Backup operation failed');process.exitCode=1;}

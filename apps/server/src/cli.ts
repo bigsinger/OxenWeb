@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from './errors.js';
+import {operationContext} from './operation-context.js';
 
 export type Job = { id: string; operation: string; status: 'queued' | 'running' | 'succeeded' | 'failed'; createdAt: string; completedAt?: string; output: string; error?: string };
 export interface CliOptions { binary: string; timeoutMs: number; maxOutputBytes: number }
@@ -34,7 +35,7 @@ export function runCli(args: string[], cwd: string, options: CliOptions): Promis
 export class JobQueue {
   private jobs = new Map<string, Job>();
   private chains = new Map<string, Promise<void>>();
-  constructor(private maximum = 500) {}
+  constructor(private maximum = 500,private options:{runTask?:(task:()=>Promise<string>)=>Promise<string>;hold?:()=>()=>void}={}) {}
 
   add(key: string, operation: string, task: () => Promise<string>): Job {
     while (this.jobs.size >= this.maximum) {
@@ -43,12 +44,14 @@ export class JobQueue {
       this.jobs.delete(completed[0]);
     }
     const job: Job = { id: randomUUID(), operation, status: 'queued', createdAt: new Date().toISOString(), output: '' };
+    const execution=operationContext.getStore(),release=this.options.hold?.();
+    execution?.defer();
     this.jobs.set(job.id, job);
     const chain = (this.chains.get(key) ?? Promise.resolve()).then(async () => {
       job.status = 'running';
-      try { job.output = await task(); job.status = 'succeeded'; }
-      catch (error) { job.status = 'failed'; job.error = error instanceof Error ? error.message : 'CLI operation failed.'; }
-      job.completedAt = new Date().toISOString();
+      try { job.output = await (this.options.runTask?this.options.runTask(task):task()); job.status = 'succeeded'; await execution?.complete({jobId:job.id}); }
+      catch (error) { job.status = 'failed'; job.error = error instanceof Error ? error.message : 'CLI operation failed.'; await execution?.uncertain(error instanceof ApiError?error.code:'ASYNC_RESULT_UNKNOWN').catch(()=>{}); }
+      finally{job.completedAt = new Date().toISOString();release?.();}
     });
     this.chains.set(key, chain);
     void chain.finally(() => { if (this.chains.get(key) === chain) this.chains.delete(key); });

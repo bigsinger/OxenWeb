@@ -1,9 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adaptWorkbenchViewCheckpoint, parseWorkbenchCheckpoint, retainConflictingWorkbenchInput, workbenchCheckpointHasInput, workbenchCheckpointIssue, type WorkbenchCheckpoint, type WorkbenchCheckpointContext } from '../../web/src/dataset-workbench-checkpoint.js';
+import {emptyDatasetBulkEditRequest} from '../../web/src/dataset-bulk-editing.js';
 
 function checkpoint(): WorkbenchCheckpoint { return { version: 2, identity: 'local:actor', project: '/repos/synthetic/test', branch: 'main', baseCommit: 'base', schemaHash: 'rules', savedAt: 'now', selected: 'one', selectedRows: ['one'], operations: [], inspectorOpen: false, editing: true, json: '{unfinished', jsonBaseline: '{}', cellEdit: { rowId: 'one', field: 'score', kind: 'number', text: 'invalid', presence: 'value', originalKind: 'number', originalPresence: 'value', baseline: '1' }, cellError: 'invalid JSON', localError: '', drawer: 'append', attachment: '', appendRowId: 'new:synthetic', appendInfo: '', fine: { kind: 'span', pointer: '/text', start: 0, end: 1, values: {}, note: 'unfinished' }, bulkValues: {}, feedback: 'draft feedback', message: 'draft commit message', page: 2, search: 'synthetic', filters: [], prompt: '', engine: 'rules', allowExternal: false, visibleColumns: ['score'], filterColumn: '', filterOperator: 'eq', filterValue: '', showFilter: true, showColumns: true }; }
 function context(): WorkbenchCheckpointContext { return { identity: 'local:actor', project: '/repos/synthetic/test', branch: 'main', baseCommit: 'base', schemaHash: 'rules', canEdit: true, canAssign: true, canAppend: true, historical: false }; }
+
+test('bulk source and own-label raw input survives restoration with scope-specific permissions',()=>{
+  const request={...emptyDatasetBulkEditRequest(),target:{scope:'source' as const,id:'quality'},draft:{kind:'number' as const,text:'invalid number',presence:'value' as const}};
+  const value:WorkbenchCheckpoint={...checkpoint(),operations:[],editing:false,cellEdit:undefined,drawer:'source-bulk',feedback:'',fine:{kind:'span',pointer:'',start:0,end:1,values:{},note:''},sourceBulk:{request,rowIds:['one','two']}};
+  assert.deepEqual(parseWorkbenchCheckpoint(JSON.parse(JSON.stringify(value)))?.sourceBulk,value.sourceBulk);assert.equal(workbenchCheckpointHasInput(value),true);assert.equal(workbenchCheckpointIssue(value,context()),'');
+  assert.match(workbenchCheckpointIssue(value,{...context(),canEdit:false}),/样本字段批量输入/);
+  const label={...value,sourceBulk:{...value.sourceBulk!,request:{...request,target:{scope:'label' as const,id:'risk'}}}};
+  assert.equal(workbenchCheckpointIssue(label,{...context(),canEdit:false}),'');assert.match(workbenchCheckpointIssue(label,{...context(),canAssign:false}),/人工标签批量输入/);
+  assert.equal(parseWorkbenchCheckpoint({...value,sourceBulk:{request:{...request,action:'guess'},rowIds:['one']}}),undefined);
+  assert.ok(workbenchCheckpointIssue(value,{...context(),baseCommit:'new-head'}));
+});
 
 test('incomplete cell, JSON, append panel and navigation preferences round-trip as raw input', () => {
   const original = checkpoint(), restored = parseWorkbenchCheckpoint(JSON.parse(JSON.stringify(original)));
@@ -26,6 +38,24 @@ test('withdrawn permissions keep the raw input available but refuse its automati
   assert.ok(workbenchCheckpointIssue(checkpoint(), { ...context(), canAppend: false }));
   assert.ok(workbenchCheckpointIssue({ ...checkpoint(), operations: [{ op: 'assign', scope: 'row', rowId: 'one', values: { quality: 'synthetic' } }] }, { ...context(), canAssign: false }));
   assert.ok(workbenchCheckpointIssue(checkpoint(), { ...context(), historical: true }));
+});
+
+test('single-row label editor restores its stable target and refuses reopening after assignment permission is withdrawn',()=>{
+  const value:WorkbenchCheckpoint={...checkpoint(),editing:false,cellEdit:undefined,drawer:'labels',selected:'synthetic-row',operations:[{op:'assign',scope:'row',rowId:'synthetic-row',values:{risk:'uncertain',source:['synthetic']}}]};
+  const restored=parseWorkbenchCheckpoint(JSON.parse(JSON.stringify(value)));assert.equal(restored?.drawer,'labels');assert.equal(restored?.selected,'synthetic-row');assert.deepEqual(restored?.operations,value.operations);
+  assert.equal(workbenchCheckpointIssue(value,context()),'');
+  assert.match(workbenchCheckpointIssue(value,{...context(),canAssign:false}),/标注输入/);
+  assert.match(workbenchCheckpointIssue({...value,operations:[]},{...context(),canAssign:false}),/标注输入/);
+});
+
+test('publication grouping raw input survives reload and still requires its own manager capability',()=>{
+  const value:WorkbenchCheckpoint={...checkpoint(),operations:[{op:'evaluation',rowIds:['one'],patch:{visibility:'holdout',suites:['gold'],familyId:'family'}}],drawer:'evaluation',evaluationBulk:{patch:{suites:[]},rowIds:['one','two']}};
+  const restored=parseWorkbenchCheckpoint(JSON.parse(JSON.stringify(value)));
+  assert.deepEqual(restored,value);
+  assert.match(workbenchCheckpointIssue(value,context()),/发布分组输入/);
+  assert.equal(workbenchCheckpointIssue(value,{...context(),canManageEvaluation:true}),'');
+  assert.match(workbenchCheckpointIssue(value,{...context(),canManageEvaluation:true,baseCommit:'other'}),/基点已改变/);
+  assert.equal(parseWorkbenchCheckpoint({...value,evaluationBulk:{patch:{},rowIds:[false]}}),undefined);
 });
 test('opaque malformed checkpoint envelopes are not treated as valid editor state', () => {
   assert.equal(parseWorkbenchCheckpoint({ version: 1 }), undefined);

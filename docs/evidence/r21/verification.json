@@ -1,0 +1,123 @@
+{
+  "at": "2026-11-10T06:21:43.154Z",
+  "scope": "local Web/BFF extension; no Oxen kernel changes",
+  "version": "0.1.0",
+  "tests": {
+    "total": 551,
+    "pass": 544,
+    "fail": 0,
+    "conditionalSkips": 7
+  },
+  "typecheck": true,
+  "stagedProductionBuild": true,
+  "officialNative": {
+    "version": "0.67.0",
+    "syntheticOnly": true,
+    "consecutivePublishes": true,
+    "notes": {
+      "added": 1,
+      "removed": 1,
+      "modified": 1
+    },
+    "oldRecordsAndDownloads404": true,
+    "oldAssetsPhysicallyRemoved": true,
+    "singleCurrent": true,
+    "upstreamStoppedAfterFixture": true
+  },
+  "browser": {
+    "url": "http://localhost:5174/repos/local/r21-ui-release/releases?branch=main",
+    "syntheticOnly": true,
+    "desktop": true,
+    "narrow": {
+      "width": 390,
+      "height": 844,
+      "documentScrollWidth": 375
+    },
+    "publishReplacement": true,
+    "manualNotesRetainedOnDuplicateVersion": true,
+    "loadingObserved": true,
+    "filteredEmptyState": true,
+    "internalSnapshotPreserved": true,
+    "frameworkOverlay": false,
+    "consoleErrors": 0,
+    "actualDownloadAttempted": false
+  },
+  "migrationCleanup": {
+    "recordsBefore": 5,
+    "recordsAfter": 0,
+    "removeRecords": 5,
+    "removeReleaseRecords": 2,
+    "removeSnapshotRecords": 3,
+    "removeAssetFiles": 9,
+    "removeAssetBytes": 15446673,
+    "removeShares": 0,
+    "pendingCleanup": 0
+  },
+  "cleanCodeBuild": {
+    "npmCi": true,
+    "contractRegeneratedWithoutChanges": true,
+    "fullBuild": true,
+    "lockSha256": "ae942721e5e04f74f760e4b7e3bc142a231e712e74a46969239f72c86b75a676",
+    "finalCodeRecheck": {
+      "engineeringFileCount": 402,
+      "engineeringSourceSha256": "33ffbe0290a3d4538720f38629fc08025b68a21cebe666c56a1e5e2badb95ac5",
+      "finalEngineeringSourceMatches": true,
+      "buildExitCode": 0
+    }
+  },
+  "deployment": {
+    "passed": true,
+    "startedAt": "2026-11-10T06:15:28.561Z",
+    "completedAt": "2026-11-10T06:15:29.724Z",
+    "oldPid": 51428,
+    "newPid": 41100,
+    "upstreamLeftRunning": true,
+    "realDatasetWrites": false,
+    "removed": {
+      "recordsBefore": 0,
+      "recordsAfter": 0,
+      "removeRecords": 0,
+      "removeReleaseRecords": 0,
+      "removeSnapshotRecords": 0,
+      "removeAssetFiles": 0,
+      "removeAssetBytes": 0,
+      "removeShares": 0,
+      "pendingCleanup": 0
+    },
+    "after": {
+      "recordsBefore": 0,
+      "recordsAfter": 0,
+      "removeRecords": 0,
+      "removeReleaseRecords": 0,
+      "removeSnapshotRecords": 0,
+      "removeAssetFiles": 0,
+      "removeAssetBytes": 0,
+      "removeShares": 0,
+      "pendingCleanup": 0
+    },
+    "oldAssetDirectoriesAbsent": true,
+    "builds": [
+      {
+        "name": "server",
+        "sha256": "cfd6daa0154e0180152c15ad4299b85449824c656dbf0370f89e6572e1aa9f8b"
+      },
+      {
+        "name": "web",
+        "sha256": "9d1dd874df805933b50f2a9ae26155b582674d7300a841c49f250dc1e9d763c6"
+      }
+    ],
+    "offlinePriorBuilds": "local ignored build backups"
+  },
+  "realSourceIntegrity": {
+    "projects": 4,
+    "mainCommitsUnchanged": true,
+    "canonicalBytesAndSha256Unchanged": true,
+    "privateDraftSha256Unchanged": true
+  },
+  "healthStatus": 200,
+  "ready": true,
+  "acceptsWrites": true,
+  "pendingReconciliation": false,
+  "credentialsIncluded": false,
+  "privateRowsIncluded": false
+}

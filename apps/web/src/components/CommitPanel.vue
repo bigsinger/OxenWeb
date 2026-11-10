@@ -2,15 +2,17 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, ChevronRight, Copy, FileDiff, GitCommitHorizontal, LoaderCircle, RefreshCw, Search, X } from 'lucide-vue-next';
-import type { Capabilities, CommitDetail, CommitItem } from '@oxen/shared';
+import type { Capabilities, CommitDetail, CommitItem,RepositoryVersionRestoreResult } from '@oxen/shared';
 import { queryString, request } from '../api';
 import { useAppStore } from '../stores/app';
 import TabularDiff from './TabularDiff.vue';
 import TextDiff from './TextDiff.vue';
+import RepositoryVersionRestorePanel from './RepositoryRestorePanel.vue';
 
 const FilePreviewComponent = defineAsyncComponent(() => import('./FilePreview.vue'));
 const snapshotFile = ref<{path:string;ref:string}>();
-const props = defineProps<{ base: string; branch: string; capabilities?: Capabilities }>();
+const props = defineProps<{ base: string; branch: string; capabilities?: Capabilities;canRestore?:boolean }>();
+const emit=defineEmits<{changed:[]}>(),restoreOpen=ref(false);
 const store = useAppStore();
 const route=useRoute(),router=useRouter();
 const fileFilter=ref(String(route.query.path??''));
@@ -56,6 +58,13 @@ async function loadDetail(commitId: string) {
   finally { if (version === detailVersion) detailLoading.value = false; }
 }
 function clearDetail() { snapshotFile.value=undefined; ++detailVersion; selectedId.value = ''; selected.value = null; detailError.value = ''; detailLoading.value = false; }
+async function restored(result:RepositoryVersionRestoreResult){
+  restoreOpen.value=false;
+  // The selected detail is immutable, but its branch list now has a new HEAD.
+  // Invalidate without calling load(), which would close the new commit detail.
+  ++listVersion;listLoaded=false;commits.value=[];page.value=1;
+  emit('changed');await router.replace({query:{...route.query,branch:props.branch,commit:result.commitId}});
+}
 function open(commit: Pick<CommitItem,'id'>) { void router.push({ query: { ...route.query, branch: props.branch, commit: commit.id } }); }
 function back() { void router.replace({ query: { ...route.query, commit: undefined } }); }
 async function copy(id: string) {
@@ -88,6 +97,7 @@ onBeforeUnmount(()=>{++listVersion;++detailVersion;});
       <div v-else-if="detailError" role="alert" class="error-state">{{ detailError }}<button class="btn btn-ghost" @click="back">返回列表</button></div>
       <template v-else-if="selected">
         <article class="commit-summary panel">
+          <button v-if="canRestore" class="btn btn-ghost" @click="restoreOpen=true">恢复到此版本（新增提交）</button>
           <div class="summary-title"><GitCommitHorizontal :size="23" /><h3>{{ selected.message }}</h3></div>
           <p class="muted">{{ selected.author || '未知作者' }} <span v-if="selected.email">&lt;{{ selected.email }}&gt;</span> · {{ date(selected.timestamp) }}</p>
           <div class="hash-line"><code>{{ selected.id }}</code><button class="icon-button" aria-label="复制提交 ID" @click="copy(selected.id)"><Copy :size="14" /></button></div>
@@ -117,6 +127,7 @@ onBeforeUnmount(()=>{++listVersion;++detailVersion;});
     </div>
     <nav v-if="!selectedId && !loading && !error && count && (page > 1 || count >= pageSize)" class="pagination" aria-label="提交历史分页"><button class="btn btn-ghost" :disabled="page <= 1" @click="changePage(page - 1)">上一页</button><span class="muted">第 {{ page }} 页</span><button class="btn btn-ghost" :disabled="count < pageSize" @click="changePage(page + 1)">下一页</button></nav>
     <div v-if="snapshotFile" class="commit-file-backdrop" @click.self="snapshotFile=undefined"><section class="commit-file-dialog" role="dialog" aria-modal="true" aria-label="提交版本文件预览" @keydown.esc="snapshotFile=undefined"><header><strong>提交文件预览 · {{snapshotFile.ref.slice(0,12)}}</strong><button class="icon-button" aria-label="关闭提交文件预览" @click="snapshotFile=undefined"><X :size="18"/></button></header><FilePreviewComponent :base="base" :branch="snapshotFile.ref" :path="snapshotFile.path" compact @close="snapshotFile=undefined"/></section></div>
+    <RepositoryVersionRestorePanel v-if="restoreOpen&&selected" :base="base" :branch="branch" :target-commit="selected.id" @close="restoreOpen=false" @restored="restored"/>
   </section>
 </template>
 

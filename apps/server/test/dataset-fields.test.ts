@@ -69,10 +69,33 @@ test('invalid config structures, duplicate typed options and reserved field IDs 
 
 test('fixed and weighted widths round trip as presentation while limits and semantic fingerprints stay strict',async t=>{
   const f=await fixture(t);
-  for(const width of [{mode:'fixed',value:47},{mode:'fixed',value:2401},{mode:'fixed',value:60.5},{mode:'weight',value:0},{mode:'weight',value:1001},{mode:'flex',value:1}])assert.equal(datasetFieldsSaveSchema.safeParse({ref:'main',expectedCommit:f.snapshot.commitId,fields:{text:{width}}}).success,false);
-  const widths={text:{width:{mode:'fixed' as const,value:480}},logical:{width:{mode:'weight' as const,value:2.5}}},saved=await f.fields.save(f.key,owner,{ref:'main',expectedCommit:f.snapshot.commitId,fields:widths}),snapshot=await f.datasets.read(f.key,saved.commitId);
+  for(const width of [{mode:'fixed',value:47},{mode:'fixed',value:2401},{mode:'fixed',value:60.5},{mode:'weight',value:0},{mode:'weight',value:1001},{mode:'flex',value:1},{mode:'weight',value:1,min:47},{mode:'weight',value:1,max:501},{mode:'weight',value:1,min:400,max:300}])assert.equal(datasetFieldsSaveSchema.safeParse({ref:'main',expectedCommit:f.snapshot.commitId,fields:{text:{width}}}).success,false);
+  const widths={text:{width:{mode:'fixed' as const,value:480}},logical:{width:{mode:'weight' as const,value:2.5,min:240,max:500}}},saved=await f.fields.save(f.key,owner,{ref:'main',expectedCommit:f.snapshot.commitId,fields:widths}),snapshot=await f.datasets.read(f.key,saved.commitId);
   assert.deepEqual(saved.configuration,widths);assert.deepEqual(datasetDraftSchemaHashes(snapshot),datasetDraftSchemaHashes(f.snapshot));assert.equal(sampleTemplateHash(snapshot),sampleTemplateHash(f.snapshot));
   assert.notEqual(sampleTemplateHash({...snapshot,descriptor:{...snapshot.descriptor,fields:{...widths,text:{...widths.text,description:'Semantic explanation'}}}}),sampleTemplateHash(snapshot));
+});
+
+test('choice colors are presentation-only and allow an explicit private-draft synchronization without changing review meaning',async t=>{
+  const f=await fixture(t),configured=await f.fields.save(f.key,owner,{ref:'main',expectedCommit:f.snapshot.commitId,fields:{bucket:{enum:['a','b']}}}),before=await f.datasets.read(f.key,configured.commitId),rowId=before.rowIds[0]!;
+  const draft=(await f.drafts.save(f.key,owner,{ref:'main',expectedCommit:before.commitId,draftRevision:0,operations:[{op:'update',rowId,record:{...before.rows[0],text:'Private synthetic input'}}]})).draft!;
+  const guarded=new DatasetFieldsService({provider:f.provider,datasets:f.datasets,access:f.access,beforeSave:async(_key,_actor,_ref,_snapshot,_fields,presentationOnly)=>{assert.equal(presentationOnly,true);}});
+  const colored=await guarded.save(f.key,owner,{ref:'main',expectedCommit:before.commitId,fields:{bucket:{enum:['a','b'],optionColors:{'["string","a"]':'#88AACC','["string","b"]':'#FFAABB'}}}}),after=await f.datasets.read(f.key,colored.commitId);
+  assert.equal(sampleTemplateHash(after),sampleTemplateHash(before));assert.deepEqual(datasetDraftSchemaHashes(after),datasetDraftSchemaHashes(before));assert.deepEqual(after.rows,before.rows);assert.deepEqual(after.rowActivity,before.rowActivity);
+  const rebased=(await f.drafts.rebase(f.key,owner,{ref:'main',expectedBaseCommit:before.commitId,expectedCommit:colored.commitId,draftRevision:draft.draftRevision,expectedDraftId:draft.id})).draft!;
+  assert.deepEqual(rebased.operations,draft.operations);assert.equal(rebased.baseCommit,colored.commitId);
+});
+
+test('field order saves only presentation, changes source projections and preserves a live private sample draft',async t=>{
+  const f=await fixture(t),configured=await f.fields.save(f.key,owner,{ref:'main',expectedCommit:f.snapshot.commitId,fields:configuration}),before=await f.datasets.read(f.key,configured.commitId),source=(await f.provider.raw(f.key,before.commitId,before.path)).content,rowId=before.rowIds[0]!;
+  const draft=(await f.drafts.save(f.key,owner,{ref:'main',expectedCommit:before.commitId,draftRevision:0,operations:[{op:'update',rowId,record:{...before.rows[0],text:'Private sample input survives sorting'}}]})).draft!;
+  const ids=[...before.columns].reverse().map(field=>field.name),fields=Object.fromEntries(ids.map((id,order)=>[id,{...(configuration[id]??{}),order}]));let guarded=0;
+  const service=new DatasetFieldsService({provider:f.provider,datasets:f.datasets,access:f.access,beforeSave:async(_key,_actor,_ref,_snapshot,_fields,presentationOnly)=>{assert.equal(presentationOnly,true);guarded++;}});
+  const saved=await service.save(f.key,owner,{ref:'main',expectedCommit:before.commitId,fields,message:'Reorder synthetic fields'}),after=await f.datasets.read(f.key,saved.commitId);
+  assert.equal(guarded,2);assert.deepEqual(saved.fields.map(field=>field.id),ids);assert.deepEqual(after.columns.map(field=>field.name),ids);assert.deepEqual(after.rows,before.rows);assert.deepEqual(after.rowIds,before.rowIds);assert.deepEqual((await f.provider.raw(f.key,after.commitId,after.path)).content,source);assert.deepEqual((await f.provider.commit(f.key,after.commitId)).files.map(file=>file.path),[DATASET_DESCRIPTOR_PATH]);
+  assert.deepEqual(datasetDraftSchemaHashes(after),datasetDraftSchemaHashes(before));assert.equal(sampleTemplateHash(after),sampleTemplateHash(before));
+  const rebased=(await f.drafts.rebase(f.key,owner,{ref:'main',expectedBaseCommit:before.commitId,expectedCommit:after.commitId,draftRevision:draft.draftRevision,expectedDraftId:draft.id})).draft!;assert.deepEqual(rebased.operations,draft.operations);assert.equal(rebased.baseCommit,after.commitId);
+  const repeated=await service.save(f.key,owner,{ref:'main',expectedCommit:after.commitId,fields});assert.equal(repeated.commitId,after.commitId,'Unchanged field order creates no further commit');
+  for(const order of [-1,1.5,Number.MAX_SAFE_INTEGER+1,'1',null])assert.equal(datasetFieldsSaveSchema.safeParse({ref:'main',expectedCommit:after.commitId,fields:{text:{order}}}).success,false);
 });
 
 test('explicit width-only synchronization keeps own draft, source and rules unchanged and creates no commit',async t=>{
@@ -154,12 +177,12 @@ test('HTTP fields require delegated schema.bind and guard existing own drafts an
   response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:before,fields:configuration},annotator.token);assert.equal(response.statusCode,403,response.body);
   response=await call('PUT',base+'/dataset/draft',{ref:'main',expectedCommit:before,draftRevision:0,operations:[{op:'update',rowId:f.snapshot.rowIds[0],record:{...f.snapshot.rows[0],text:'Private edit'}}]});assert.equal(response.statusCode,200,response.body);const draft=response.json().draft;
   response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:before,fields:configuration});assert.equal(response.statusCode,409,response.body);assert.equal(response.json().error.code,'DATASET_FIELDS_DRAFT_IN_USE');
-  response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:before,fields:{text:{width:{mode:'fixed',value:300}}}});assert.equal(response.statusCode,200,response.body);const widthCommit=response.json().commitId;
+  response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:before,fields:{text:{width:{mode:'fixed',value:300},order:0}}});assert.equal(response.statusCode,200,response.body);const widthCommit=response.json().commitId;
   response=await call('POST',base+'/dataset/draft/rebase',{ref:'main',expectedBaseCommit:before,expectedCommit:widthCommit,draftRevision:draft.draftRevision,expectedDraftId:draft.id});assert.equal(response.statusCode,200,response.body);const recovered=response.json().draft;
   response=await call('POST',base+'/dataset/draft/discard',{ref:'main',draftRevision:recovered.draftRevision,expectedDraftId:recovered.id});assert.equal(response.statusCode,200,response.body);
   response=await call('POST',base+'/access',{name:'Delegated schema maintainer',role:'lead',capabilities:['read','schema.bind']});assert.equal(response.statusCode,201,response.body);const maintainer=response.json(),latest=await f.head();
   response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:latest,fields:configuration},maintainer.token);assert.equal(response.statusCode,200,response.body);const saved=response.json();
   response=await call('POST',base+'/tasks',{title:'Active synthetic work',ref:'main',expectedCommit:saved.commitId,assigneeIds:[annotator.collaborator.id],reviewerId:'owner',mode:'review',branchPrefix:'annotate/fields'});assert.equal(response.statusCode,201,response.body);
-  response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:saved.commitId,fields:{...configuration,text:{width:{mode:'weight',value:2}}}});assert.equal(response.statusCode,200,response.body);const taskWidthCommit=response.json().commitId;
+  response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:saved.commitId,fields:{...configuration,text:{width:{mode:'weight',value:2},order:0}}});assert.equal(response.statusCode,200,response.body);const taskWidthCommit=response.json().commitId;
   response=await call('PUT',base+'/dataset/fields',{ref:'main',expectedCommit:taskWidthCommit,fields:{...configuration,text:{displayName:'正文',width:{mode:'weight',value:2}}}});assert.equal(response.statusCode,409,response.body);assert.equal(response.json().error.code,'TASK_TEMPLATE_IN_USE');assert.equal(await f.head(),taskWidthCommit);
 });

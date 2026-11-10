@@ -1,5 +1,6 @@
+import {durableWriteJson} from './durable-store.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AnnotationTask, AnnotationTaskView, TaskDecision, TaskParticipant, TaskReview, TaskSubmission, WorkflowPreflight, WorkflowSummary } from '../../../packages/shared/src/workflow-types.js';
 import type { DatasetPage, DatasetRowCapabilities, DatasetSnapshot, DatasetWriteContext, DatasetWriteOperation } from '../../../packages/shared/src/dataset.js';
@@ -60,9 +61,7 @@ export class WorkflowStore {
     const next = this.chain.then(async () => {
       const tasks = structuredClone(this.tasks), result = work(tasks);
       await mkdir(path.dirname(this.filename), { recursive: true });
-      const temporary = `${this.filename}.${randomUUID()}.tmp`;
-      await writeFile(temporary, JSON.stringify({ version: 1, tasks }, null, 2), { mode: 0o600 });
-      await rename(temporary, this.filename); this.tasks = tasks; return structuredClone(result);
+      await durableWriteJson(this.filename,{version:1,tasks}); this.tasks = tasks; return structuredClone(result);
     });
     this.chain = next.then(() => {}, () => {}); return next;
   }
@@ -197,6 +196,11 @@ export class WorkflowService {
     });
   }
   async beforeWrite(key: RepoKey, identity: RequestIdentity, branch: string, rowIds: string[], operation: DatasetWriteOperation, context: DatasetWriteContext) {
+    if (operation === 'edit-evaluation') {
+      await this.options.access.requireCapability(key, identity, 'release.manage');
+      await this.options.access.requireCapability(key, identity, 'data.edit');
+      return;
+    }
     if (operation === 'edit-dataset-labels') { await this.options.access.requireCapability(key, identity, 'dataset.assign'); if(branch!=='main')throw new ApiError(409,'PROJECT_LABELS_MAIN_REQUIRED','项目标签统一在 main 维护，请使用项目顶部的“编辑标签”。');return; }
     if (operation === 'feedback' || await this.manager(key, identity)) return;
     const history = this.store.list(key), tasks = history.filter(active);
@@ -362,18 +366,20 @@ export class WorkflowService {
     }
     throw new ApiError(413, 'TASK_HISTORY_LIMIT', '提交历史超过审核可完整验证的上限，没有使用部分结果。');
   }
-  async preflight(key: RepoKey, reference: string): Promise<WorkflowPreflight> {
+  async preflight(key: RepoKey, reference: string, rowIds?: string[]): Promise<WorkflowPreflight> {
     const snapshot = await this.options.datasets.read(key, reference), tasks = this.store.list(key).filter(retained);
-    const cacheKey = `${key.namespace}/${key.repo}@${snapshot.commitId}:${tasks.map(task => `${task.id}:${task.revision}`).join(',')}`;
+    const scope = rowIds === undefined ? undefined : new Set(rowIds);
+    if (scope && (scope.size !== rowIds!.length || rowIds!.some(id => !snapshot.rowIds.includes(id)))) throw new ApiError(422, 'WORKFLOW_SCOPE_INVALID', '复核范围必须是固定提交内唯一有效的稳定样本 ID。');
+    const cacheKey = `${key.namespace}/${key.repo}@${snapshot.commitId}:${tasks.map(task => `${task.id}:${task.revision}`).join(',')}:${scope ? workflowHash([...scope].sort()) : 'all'}`;
     let cached = this.preflights.get(cacheKey);
     if (!cached || cached.expires < Date.now()) {
-      const result = this.inspectPreflight(key, snapshot, tasks); cached = { expires: Date.now() + 15000, result };
+      const result = this.inspectPreflight(key, snapshot, tasks, scope); cached = { expires: Date.now() + 15000, result };
       if (this.preflights.size > 20) this.preflights.clear(); this.preflights.set(cacheKey, cached);
       result.catch(() => this.preflights.delete(cacheKey));
     }
     return structuredClone(await cached.result);
   }
-  private async inspectPreflight(key: RepoKey, snapshot: DatasetSnapshot, tasks: AnnotationTask[]): Promise<WorkflowPreflight> {
+  private async inspectPreflight(key: RepoKey, snapshot: DatasetSnapshot, tasks: AnnotationTask[], scope?: Set<string>): Promise<WorkflowPreflight> {
     const ancestry = await this.ancestry(key, snapshot.commitId), owners = new Map<string, string>();
     for (const task of tasks) for (const rowId of task.rowIds) owners.set(rowId, task.id);
     const issues: string[] = [], acceptedValues: WorkflowPreflight['acceptedValues'] = Object.create(null), acceptedFineAnnotations: WorkflowPreflight['acceptedFineAnnotations'] = Object.create(null), reviews: TaskReview[] = [], accepted = new Set<string>();
@@ -382,6 +388,7 @@ export class WorkflowService {
       const latest = new Map<string, { decision: TaskDecision; review: TaskReview }>();
       for (const review of task.reviews.filter(item => item.assignmentRevision === task.assignmentRevision)) for (const decision of review.decisions) latest.set(decision.rowId, { decision, review });
       for (const rowId of task.rowIds) {
+        if (scope && !scope.has(rowId)) continue;
         if (owners.get(rowId) !== task.id) continue;
         const item = latest.get(rowId); if (!item || item.decision.verdict !== 'approved') continue;
         const { review, decision } = item;
@@ -400,14 +407,21 @@ export class WorkflowService {
         if (!reviews.some(item => item.id === review.id)) reviews.push(review);
       }
     }
-    const missing = snapshot.rowIds.filter(rowId => !accepted.has(rowId));
+    const currentRows = scope ? snapshot.rowIds.filter(id => scope.has(id)) : snapshot.rowIds;
+    const missing = currentRows.filter(rowId => !accepted.has(rowId));
     if (missing.length) issues.push(`${missing.length} 条当前样本尚无有效、已合并且与当前内容一致的独立复核。`);
-    if (!snapshot.rowIds.length) issues.push('数据集为空。');
-    const orphaned = snapshot.orphanAssignments.filter(item => item.scope !== 'row' || !accepted.has(item.rowId ?? '') || snapshot.rowIds.includes(item.rowId ?? ''));
+    if (!currentRows.length) issues.push('数据集为空。');
+    const orphaned = snapshot.orphanAssignments.filter(item => (!scope || item.scope !== 'row' || scope.has(item.rowId ?? '')) && (item.scope !== 'row' || !accepted.has(item.rowId ?? '') || snapshot.rowIds.includes(item.rowId ?? '')));
     if (orphaned.length) issues.push(`${orphaned.length} 条历史标签引用已失效，需要负责人明确处置。`);
-    const unadjudicated = snapshot.labelConflicts.filter(conflict => conflict.scope !== 'row' || !accepted.has(conflict.rowId ?? ''));
+    const unadjudicated = snapshot.labelConflicts.filter(conflict => (!scope || conflict.scope !== 'row' || scope.has(conflict.rowId ?? '')) && (conflict.scope !== 'row' || !accepted.has(conflict.rowId ?? '')));
     if (unadjudicated.length) issues.push(`${unadjudicated.length} 处标签分歧尚未得到有效裁决。`);
-    return { ok: !issues.length, issues, acceptedValues, acceptedFineAnnotations, reviewSnapshot: { version: 1, commitId: snapshot.commitId, reviews, tasks: tasks.filter(task => task.rowIds.some(id => accepted.has(id))).map(({ id, title, mode, assignmentRevision, baselineCommitId, participants, reviewer, rowIds }) => ({ id, title, mode, assignmentRevision, baselineCommitId, participants, reviewer, rowIds })) } };
+    // The original proof is verified above. A scoped export is an audit projection;
+    // never embed other rows' decisions or submission fingerprints in its envelope.
+    const scopedReviews = scope ? reviews.map(review => ({ ...review,
+      decisions: review.decisions.filter(decision => accepted.has(decision.rowId)),
+      submissions: review.submissions.map(submission => ({ ...submission, fingerprints: Object.fromEntries(Object.entries(submission.fingerprints).filter(([id]) => accepted.has(id))) })),
+    })) : reviews;
+    return { ok: !issues.length, issues, acceptedValues, acceptedFineAnnotations, reviewSnapshot: { version: 1, commitId: snapshot.commitId, reviews: scopedReviews, tasks: tasks.filter(task => task.rowIds.some(id => accepted.has(id))).map(({ id, title, mode, assignmentRevision, baselineCommitId, participants, reviewer, rowIds }) => ({ id, title, mode, assignmentRevision, baselineCommitId, participants, reviewer, rowIds: scope ? rowIds.filter(id => accepted.has(id)) : rowIds })) } };
   }
   async workflowFields(key: RepoKey, snapshot: DatasetSnapshot): Promise<Record<string, Record<string, unknown>>> {
     const result = await this.preflight(key, snapshot.commitId), fields: Record<string, Record<string, unknown>> = Object.create(null);

@@ -1,5 +1,6 @@
+import {durableWriteFile} from './durable-store.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type { DatasetDraft, DatasetDraftChange, DatasetDraftCommitInput, DatasetDraftDiff, DatasetDraftRebaseInput, DatasetDraftSaveInput, DatasetDraftState, DatasetDraftSummary, DatasetQueryInput, DatasetSnapshot } from '../../../packages/shared/src/dataset.js';
@@ -47,8 +48,7 @@ export class DatasetDraftService {
   private async persist(key:RepoKey,identity:RequestIdentity,draft:DatasetDraft){
     const filename=this.filename(key,identity,draft.ref),serialized=JSON.stringify({version:1,...key,owner:principal(identity),draft});
     if(Buffer.byteLength(serialized)>MAX_DRAFT_BYTES)throw new ApiError(413,'DATASET_DRAFT_LIMIT','本机草稿超过 24 MiB，当前编辑仍需保留。');
-    await mkdir(path.dirname(filename),{recursive:true,mode:0o700});const temporary=filename+'.'+randomUUID()+'.tmp';
-    try{await writeFile(temporary,serialized,{encoding:'utf8',mode:0o600,flag:'wx'});await rename(temporary,filename);}finally{await rm(temporary,{force:true}).catch(()=>{});}
+    await mkdir(path.dirname(filename),{recursive:true,mode:0o700});await durableWriteFile(filename,serialized);
   }
   private async validate(key:RepoKey,identity:RequestIdentity,draft:DatasetDraft){
     const plan=await this.datasets.plan(key,identity,{ref:draft.ref,expectedCommit:draft.baseCommit,message:'Validate private dataset draft',operations:draft.operations});
@@ -111,7 +111,7 @@ export class DatasetDraftService {
   private pageBase(baseline:DatasetSnapshot,page:Pick<DatasetSnapshot,'rowIds'|'attachments'>,identity:RequestIdentity){
     const shown=new Set(page.rowIds),source=new Map(baseline.rowIds.map((id,index)=>[id,baseline.rows[index]!]));
     const files=new Set([baseline.path,...page.attachments.filter(attachment=>attachment.rowIds.some(id=>shown.has(id))).map(attachment=>attachment.path)]);
-    return {baseRows:Object.fromEntries(page.rowIds.filter(id=>source.has(id)).map(id=>[id,source.get(id)!])),baseOwnLabelRecords:Object.fromEntries(baseline.labelRecords.filter(record=>record.scope==='row'&&record.path===baseline.path&&record.actor.id===identity.id&&!!record.rowId&&shown.has(record.rowId)).map(record=>[record.rowId!,record])),baseOwnFileLabelRecords:Object.fromEntries(baseline.labelRecords.filter(record=>record.scope==='file'&&record.actor.id===identity.id&&!!record.path&&files.has(record.path)).map(record=>[record.path!,record]))};
+    return {baseEvaluationRows:Object.fromEntries(page.rowIds.map(id=>[id,baseline.evaluation?.rows[id]??{visibility:null,suites:[],familyId:null}])),baseRows:Object.fromEntries(page.rowIds.filter(id=>source.has(id)).map(id=>[id,source.get(id)!])),baseOwnLabelRecords:Object.fromEntries(baseline.labelRecords.filter(record=>record.scope==='row'&&record.path===baseline.path&&record.actor.id===identity.id&&!!record.rowId&&shown.has(record.rowId)).map(record=>[record.rowId!,record])),baseOwnFileLabelRecords:Object.fromEntries(baseline.labelRecords.filter(record=>record.scope==='file'&&record.actor.id===identity.id&&!!record.path&&files.has(record.path)).map(record=>[record.path!,record]))};
   }
   async diff(key:RepoKey,identity:RequestIdentity,ref:string):Promise<DatasetDraftDiff|undefined>{
     const stored=await this.stored(key,identity,safeRef(ref));if(!stored)return undefined;const plan=await this.validate(key,identity,stored.draft);
@@ -119,8 +119,9 @@ export class DatasetDraftService {
       const id='rowId'in operation?operation.rowId:undefined,index=id?plan.baseline.rowIds.indexOf(id):-1;
       if(operation.op==='update'||operation.op==='delete'||operation.op==='append'){const before=index>=0?plan.baseline.rows[index]:undefined,after=operation.op==='delete'?undefined:operation.record;return {op:operation.op,rowId:id,fields:[...new Set([...Object.keys(before??{}),...Object.keys(after??{})])].filter(field=>canonicalJson(before?.[field])!==canonicalJson(after?.[field])),before,after};}
       if(operation.op==='assign'){const own=plan.baseline.labelRecords.find(item=>item.actor.id===identity.id&&item.scope===operation.scope&&(operation.scope!=='row'||item.rowId===operation.rowId)&&(operation.scope!=='file'||item.path===operation.path)),effective=plan.baseline.labels.assignments.find(item=>item.scope===operation.scope&&(operation.scope!=='row'||item.rowId===operation.rowId)&&(operation.scope!=='file'||item.path===operation.path));const before={values:operation.scope==='dataset'?effective?.values??{}:own?.values??{},spans:own?.spans??[],steps:own?.steps??[]};return {op:operation.op,scope:operation.scope,rowId:operation.rowId,path:operation.path,fields:[...Object.keys(operation.values),...(operation.spans?['片段']:[]),...(operation.steps?['步骤']:[])],before,after:{values:operation.values,spans:operation.spans??own?.spans??[],steps:operation.steps??own?.steps??[]}};}
+      if(operation.op==='evaluation')return {op:operation.op,...(operation.rowIds.length===1?{rowId:operation.rowIds[0]}:{}),fields:Object.keys(operation.patch).map(field=>'evaluation.'+(field==='familyId'?'family_id':field)),before:Object.fromEntries(operation.rowIds.map(id=>[id,plan.baseline.evaluation?.rows[id]??{visibility:null,suites:[],familyId:null}])),after:Object.fromEntries(operation.rowIds.map(id=>[id,plan.snapshot.evaluation?.rows[id]]))};
       return {op:operation.op,fields:operation.op==='readme'?['README']:['反馈'],before:operation.op==='readme'?plan.baseline.readme:undefined,after:operation.op==='readme'?operation.content:operation.message};
-    });return {draft:draftSummary(stored.draft),changes};
+    });return {draft:draftSummary(stored.draft),changes:changes.filter(change=>change.op!=='evaluation'||canonicalJson(change.before)!==canonicalJson(change.after))};
   }
   async commit(key:RepoKey,identity:RequestIdentity,input:DatasetDraftCommitInput){
     const parsed=draftCommitSchema.parse(input);

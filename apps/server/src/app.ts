@@ -43,10 +43,26 @@ import { registerDatasetUiStateRoutes } from './dataset-ui-state-routes.js';
 import { RepositoryLifecycleService } from './repository-lifecycle.js';
 import { registerRepositoryLifecycleRoutes } from './repository-lifecycle-routes.js';
 import { registerRepositoryReadmeRoutes } from './repository-readme-routes.js';
-import { DatasetAutoWidthService } from './dataset-auto-width.js';
-import { registerDatasetAutoWidthRoutes } from './dataset-auto-width-routes.js';
+import { RepositoryHistoryService,RESTORE_WORKSPACE_PREFIX } from './repository-history.js';
+import { registerRepositoryHistoryRoutes } from './repository-history-routes.js';
 import { registerDatasetImportRoutes } from './dataset-import-routes.js';
 import { APPLICATION_VERSION } from '../../../packages/shared/src/version.js';
+import {CapacityBudget,installCapacityBudget} from './capacity-budget.js';
+import {OperationJournal} from './operation-journal.js';
+import {installOperationHttp,journalProvider,type OperationHttpServices} from './operation-http.js';
+import {GlobalAuditService} from './global-audit.js';
+import {registerAccessManagementRoutes} from './access-management-routes.js';
+import {InstanceRuntime} from './instance-runtime.js';
+import {operationContext} from './operation-context.js';
+import {operationalLog} from './operational-log.js';
+import {readBackupHealth} from './backup-health.js';
+import { EvaluationPolicyService, DATASET_EVALUATION_PATH } from './dataset-evaluation.js';
+import { globalFieldMetadata } from '../../../packages/shared/src/global-fields.js';
+import { registerGlobalFieldRoutes } from './global-field-routes.js';
+import { RestrictedMasterAccess } from './restricted-master-access.js';
+import { SourceAccessMarkers } from './source-access-markers.js';
+import { datasetRepositoryKey } from './dataset-route-key.js';
+import { readPublishingDataset } from './publishing-dataset-source.js';
 
 const name = z.string().min(1).max(120).transform(safeSegment);
 const ref = z.string().min(1).max(160).transform(safeRef);
@@ -58,9 +74,11 @@ const key = (request: FastifyRequest): RepoKey => { const value = params.parse(r
 const id = (request: FastifyRequest) => workspaceId.parse((request.params as { id: string }).id);
 const base = '/api/repos/:namespace/:repo';
 
-export async function createApp(config: Config, injectedProvider?: Provider) {
+export async function createApp(config: Config, injectedProvider?: Provider,runtime?:InstanceRuntime) {
   const app = Fastify({ bodyLimit: 12 * 1024 * 1024, logger: false, requestTimeout: 120_000 });
   app.setErrorHandler((error, request, reply) => {
+    const failureCode=error instanceof ApiError?error.code:'INTERNAL_ERROR',failureStatus=error instanceof ApiError?error.status:typeof(error as {statusCode?:unknown}).statusCode==='number'?(error as {statusCode:number}).statusCode:500;
+    if(failureStatus>=500)operationalLog('request.failed',{requestId:request.id,code:failureCode});
     if (error instanceof ZodError) return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: error.issues.map(issue => `${issue.path.join('.') || 'input'}: ${issue.message}`).join('; '), requestId: request.id } });
     if (error instanceof ApiError) return reply.code(error.status).send({ error: { code: error.code, message: error.message, requestId: request.id, ...(error.details !== undefined ? { details: error.details } : {}) } });
     const statusCode = typeof (error as { statusCode?: unknown }).statusCode === 'number' ? (error as { statusCode: number }).statusCode : 500;
@@ -69,34 +87,67 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
     return reply.code(statusCode).send({ error: { code: statusCode === 413 ? 'UPLOAD_LIMIT' : 'INTERNAL_ERROR', message, requestId: request.id } });
   });
   app.addHook('onSend', async (request, reply) => { reply.header('X-Content-Type-Options', 'nosniff'); if (request.url.startsWith('/api/')) reply.header('Cache-Control', 'no-store'); });
-  const provider: Provider = injectedProvider ?? (config.demo ? new DemoProvider(config.demoFile) : new LiveProvider(config));
-  if (provider instanceof DemoProvider || provider instanceof LiveProvider) await provider.init();
-  const jobs = new JobQueue();
+  const sourceProvider:Provider=injectedProvider??(config.demo?new DemoProvider(config.demoFile):new LiveProvider(config));
+  if(sourceProvider instanceof DemoProvider||sourceProvider instanceof LiveProvider)await sourceProvider.init();
+  const provider=journalProvider(sourceProvider),capacity=new CapacityBudget();
+  installCapacityBudget(app,capacity);
+  const journal=new OperationJournal(path.join(path.dirname(config.demoFile),'operation-journal.json'));await journal.init();
+  const audit=new GlobalAuditService(path.join(path.dirname(config.demoFile),'global-audit.json'));await audit.init();
+  const jobs = new JobQueue(100,{runTask:task=>capacity.runHeavy(task,true),hold:()=>operationContext.getStore()?.holdAsync?.()??runtime?.beginWrite()??(()=>{})});
   const jobRepositories=new Map<string,RepoKey>();
   const settings=new RepositorySettingsService(provider,path.join(path.dirname(config.demoFile),'repository-policy-branches.json'));
-  const access=new RepositoryAccessService(settings,path.join(path.dirname(config.demoFile),'access-credentials.json'),!config.token);
+  const access=new RepositoryAccessService(settings,path.join(path.dirname(config.demoFile),'access-credentials.json'),!config.token&&!config.teamMode);
   await access.init();
+  const evaluationPolicy=new EvaluationPolicyService(path.join(path.dirname(config.demoFile),'evaluation-policy.json'),settings,async(repository,identity)=>{await access.requireCapability(repository,identity,'release.manage');await access.requireCapability(repository,identity,'data.edit');},async(repository,identity)=>{await access.requireCapability(repository,identity,'release.manage');});
+  await evaluationPolicy.init();settings.setPolicyValidator((repository,policy)=>evaluationPolicy.assertVisibility(repository,policy.visibility));
+  access.setAuditRecorder(audit);
   const authenticated = installAuth(app, config);
   installRepositoryAccess(app,access,authenticated);
+  app.addHook('preHandler',async request=>{const url=request.routeOptions.url??request.url.split('?')[0]!;if(sourceProvider instanceof LiveProvider&&!['GET','HEAD','OPTIONS'].includes(request.method)&&url!=='/api/session'&&!/\/(?:query|preview|plan|inspect)$/.test(url)&&!url.startsWith('/api/maintenance/')&&!await sourceProvider.checkReady())throw new ApiError(503,'UPSTREAM_NOT_READY','官方服务未就绪或版本与固定0.67契约不符；请保留输入并核对服务连接。');});
+  const operationServices:OperationHttpServices={provider,access,journal,audit,evaluationPolicy:repository=>evaluationPolicy.policy(repository),holdAsync:()=>runtime?.retainWrite()??(()=>{})};
+  installOperationHttp(app,operationServices);
+  if(runtime){
+    app.addHook('onRoute',route=>{const original=route.handler;route.handler=async function(request,reply){const url=route.url;if(['GET','HEAD','OPTIONS'].includes(request.method)||url==='/api/session'||url.startsWith('/api/maintenance/')||/\/(?:query|preview|plan|inspect)$/.test(url))return original.call(this,request,reply);const release=runtime.beginWrite();try{return await original.call(this,request,reply);}finally{release();}};});
+    app.post('/api/maintenance/drain',async request=>{if(requestIdentity(request).kind!=='owner')throw new ApiError(403,'OWNER_REQUIRED','仅实例管理员可进入维护。');const result=await runtime.drain();await audit.record({action:'system.maintenance_started',actor:requestIdentity(request)});return {...result,pid:process.pid};});
+    app.post('/api/maintenance/resume',async request=>{if(requestIdentity(request).kind!=='owner')throw new ApiError(403,'OWNER_REQUIRED','仅实例管理员可恢复写入。');const result=runtime.resume();await audit.record({action:'system.maintenance_finished',actor:requestIdentity(request)});return result;});
+  }
+  registerAccessManagementRoutes(app,{access,audit});
   const lifecycle=new RepositoryLifecycleService({filename:path.join(path.dirname(config.demoFile),'repository-recycle-bin.json'),provider,access});await lifecycle.init();
   app.addHook('onRequest',async request=>{const match=/^\/api\/repos\/([^/]+)\/([^/?]+)(\/[^?]*)?/.exec(request.url);if(!match)return;const tail=match[3]??'';if(tail==='/lifecycle'||tail==='/lifecycle/remove'||tail==='/lifecycle/restore')return;lifecycle.assertAvailable({namespace:safeSegment(decodeURIComponent(match[1]!)),repo:safeSegment(decodeURIComponent(match[2]!))});});
   registerRepositoryLifecycleRoutes(app,lifecycle);
   registerRepositoryControl(app,{settings,access});
   const {governance,writeGuard}=await registerGovernanceRoutes(app,{provider,access,filename:path.join(path.dirname(config.demoFile),'governance.json'),organizations:[...new Set(['local','oxen',...config.namespaces])]});
+  const sourceMarkers=new SourceAccessMarkers({filename:path.join(path.dirname(config.demoFile),'source-access-markers.json')});
+  await sourceMarkers.init();
+  if(config.demo)await sourceMarkers.retainRestrictions([]);
+  const sourceAccess=new RestrictedMasterAccess(access,async repository=>governance.globalFieldsManaged(repository)||await evaluationPolicy.isEnabled(repository)||sourceMarkers.isRestricted(repository));
+  sourceAccess.install(app);operationServices.sourceAccess=sourceAccess;
   let workflows:WorkflowService;
-  const datasets=registerDatasetRoutes(app,provider,{access,governance,beforeWrite:(...args)=>workflows.beforeWrite(...args),workflowFields:(repository,snapshot)=>workflows.workflowFields(repository,snapshot),rowCapabilities:(...args)=>workflows.rowCapabilities(...args),appendRows:(...args)=>workflows.appendRowsAllowed(...args)});
-  registerDatasetAutoWidthRoutes(app,new DatasetAutoWidthService(datasets,async(repository,identity)=>{await access.requireCapability(repository,identity,'read');await access.requireCapability(repository,identity,'schema.bind');}));
+  let releaseService:ReleaseService;
+  app.addHook('onRequest',async request=>{const match=/^\/api\/v1\/datasets\/([^/?]+)(\/[^?]*)?/.exec(request.url);if(!match)return;let decoded:string;try{decoded=decodeURIComponent(match[1]!);}catch{throw new ApiError(400,'DATASET_ID_INVALID','数据集ID编码无效。');}const repository=datasetRepositoryKey(decoded),identity=requestIdentity(request);lifecycle.assertAvailable(repository);await access.require(repository,identity,'read');if(!/^\/(?:releases|snapshots)(?:\/|$)/.test(match[2]??''))await sourceAccess.requireSource(repository,identity);});
+  const datasets=registerDatasetRoutes(app,provider,{access,governance,globalFields:()=>globalFieldMetadata(governance.globalFieldCatalog()),beforeGlobalFieldsAdoption:repository=>governance.markGlobalFieldsManaged(repository),evaluation:{enabled:repository=>evaluationPolicy.isEnabled(repository),assertPrivate:repository=>evaluationPolicy.assertPrivate(repository),exposed:repository=>releaseService.exposed(repository)},onEvaluationCommitted:(repository,actor,sampleCount,commitId)=>audit.record({action:'dataset.evaluation_updated',actor,repository,details:{sampleCount,commitId}}).then(()=>{}),beforeWrite:(...args)=>workflows.beforeWrite(...args),workflowFields:(repository,snapshot)=>workflows.workflowFields(repository,snapshot),rowCapabilities:(...args)=>workflows.rowCapabilities(...args),appendRows:(...args)=>workflows.appendRowsAllowed(...args)});
+  app.get(base+'/dataset/evaluation/policy',async request=>{const repository=key(request);await access.require(repository,requestIdentity(request),'read');return evaluationPolicy.policy(repository);});
+  app.post(base+'/dataset/evaluation/policy',async request=>{z.object({confirmPrivateMaster:z.literal(true)}).strict().parse(request.body);return evaluationPolicy.activate(key(request),requestIdentity(request));});
   workflows=new WorkflowService({provider,datasets,access,filename:path.join(path.dirname(config.demoFile),'annotation-tasks.json')});
   await workflows.init();registerWorkflowRoutes(app,workflows);
   const drafts=registerDatasetDraftRoutes(app,datasets,{directory:path.join(path.dirname(config.demoFile),'dataset-drafts'),access,rowCapabilities:(...args)=>workflows.rowCapabilities(...args),appendRows:(...args)=>workflows.appendRowsAllowed(...args)});
   registerRepositoryReadmeRoutes(app,{provider,datasets,drafts,access});
+  registerRepositoryHistoryRoutes(app,new RepositoryHistoryService({provider,datasets,authorize:async(repository,identity)=>{
+    await access.requireCapability(repository,identity,'project.admin');await access.requireCapability(repository,identity,'data.edit');
+  },beforeRestore:async(repository,identity,branch,target,head)=>{
+    const pending=await drafts.read(repository,identity,branch);if(pending.draft||pending.summary)throw new ApiError(409,'RESTORE_DRAFT_IN_USE','此分支有本人样本草稿；输入仍保留，请先提交或导出并处理草稿，再恢复版本。');
+    if(workflows.store.list(repository).some(task=>!['merged','cancelled','setup-failed'].includes(task.status)))throw new ApiError(409,'RESTORE_ACTIVE_TASKS','项目仍有活动标注任务；请先完成或撤销任务，再恢复数据版本。');
+    await writeGuard.assertMergeAllowed(repository,identity,head,target);
+    if(await evaluationPolicy.isEnabled(repository)){try{await datasets.assertEvaluationSafety(repository,await datasets.read(repository,target));}catch(error){if(!(error instanceof ApiError&&error.code==='DATASET_NOT_CONFIGURED'))throw error;}}
+  }}));
   registerDatasetUiStateRoutes(app,{directory:path.join(path.dirname(config.demoFile),'dataset-ui-state'),access});
-  registerDatasetFieldRoutes(app,{provider,access,datasets,beforeSave:async(repository,identity,branch,_snapshot,_fields,presentationOnly)=>{
+  const datasetFields=registerDatasetFieldRoutes(app,{provider,access,datasets,globalFields:()=>globalFieldMetadata(governance.globalFieldCatalog()),beforeSave:async(repository,identity,branch,_snapshot,_fields,presentationOnly)=>{
     if(presentationOnly)return;
     const ownDraft=await drafts.read(repository,identity,branch);
     if(ownDraft.draft||ownDraft.summary)throw new ApiError(409,'DATASET_FIELDS_DRAFT_IN_USE','此分支仍有本人样本草稿。请先提交或导出并放弃草稿，再维护字段配置。');
     if(workflows.store.list(repository).some(task=>!['merged','cancelled','setup-failed'].includes(task.status)))throw new ApiError(409,'TASK_TEMPLATE_IN_USE','当前仍有活动标注任务。请先完成或撤销任务，再修改样本字段规则。');
   }});
+  registerGlobalFieldRoutes(app,{governance,fields:datasetFields,provider,access});
   const activity=new RepositoryActivityStore(path.join(path.dirname(config.demoFile),'repository-activity.json'));await activity.init();
   const catalog=new DatasetCatalogService({provider,readBinding:(repository,commitId)=>governance.snapshot(repository,commitId),authorize:async(repository,identity)=>{await access.requireCapability(repository,identity,'read');},readActivity:async(repository,identity)=>({...activity.read(repository),localDraftAt:(await drafts.readActivity(repository,identity)).updatedAt})});
   registerProjectLabelRoutes(app,{provider,access,readBinding:(repository,commitId)=>governance.snapshot(repository,commitId)});
@@ -106,6 +157,8 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
     const match=/^\/api\/repos\/([^/]+)\/([^/?]+)\/workspaces(?:\/([^/?]+))?(?:\/|$)/.exec(request.url.split('?')[0]!);
     if(!match)return;
     const repository={namespace:safeSegment(decodeURIComponent(match[1]!)),repo:safeSegment(decodeURIComponent(match[2]!))};
+    if(match[3]){const managed=await provider.workspace(repository,workspaceId.parse(decodeURIComponent(match[3])));if(managed.name.startsWith(RESTORE_WORKSPACE_PREFIX))throw new ApiError(403,'RESTORE_WORKSPACE_INTERNAL','恢复工作区由已核对计划独占；不能通过通用工作区接口修改、提交或删除。');}
+    else if(request.body&&typeof request.body==='object'&&typeof(request.body as {name?:unknown}).name==='string'&&(request.body as {name:string}).name.startsWith(RESTORE_WORKSPACE_PREFIX))throw new ApiError(400,'RESTORE_WORKSPACE_NAME_RESERVED','此名称前缀由版本恢复流程保留。');
     if(!workflows.store.list(repository).length)return;
     const body=request.body&&typeof request.body==='object'?request.body as Record<string,unknown>:{};
     const branch=match[3]?(await provider.workspace(repository,workspaceId.parse(decodeURIComponent(match[3])))).branch:typeof body.branch==='string'?safeRef(body.branch):'';
@@ -130,7 +183,9 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
       for(const fragment of [...record.spans,...record.steps])validateLabelDocument({version:1,columns:next.columns,assignments:[{...target,id:assignmentId(target),values:fragment.values}]});
     }
   });
-  writeGuard.setManagedPathResolver(async(repository,filename)=>{try{return (await datasets.managedPaths(repository,(await settings.read(repository)).policy.defaultBranch)).has(filename);}catch(cause){if(cause instanceof ApiError&&(cause.status===404||cause.code==='DATASET_NOT_CONFIGURED'))return false;throw cause;}});
+  writeGuard.setManagedPathResolver(async(repository,filename)=>{if(filename===DATASET_EVALUATION_PATH)return true;try{return (await datasets.managedPaths(repository,(await settings.read(repository)).policy.defaultBranch)).has(filename);}catch(cause){if(cause instanceof ApiError&&(cause.status===404||cause.code==='DATASET_NOT_CONFIGURED'))return false;throw cause;}});
+  writeGuard.setEvaluationMergeValidator(async(repository,reference)=>{if(!await evaluationPolicy.isEnabled(repository))return;await evaluationPolicy.assertPrivate(repository);try{await datasets.assertEvaluationSafety(repository,await datasets.read(repository,reference));}catch(error){if(!(error instanceof ApiError&&error.code==='DATASET_NOT_CONFIGURED'))throw error;}});
+  writeGuard.setRepositoryVisibilityValidator((repository,visibility)=>evaluationPolicy.assertVisibility(repository,visibility));
   writeGuard.setAssignmentAuthorizer(async(repository,identity,body)=>{
     if(!workflows.store.list(repository).length)return;
     const branch=ref.parse(body.ref),scope=z.enum(['dataset','file','row']).parse(body.scope),rowId=typeof body.rowId==='string'?body.rowId:undefined;
@@ -138,9 +193,9 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
     if(scope==='file'&&typeof body.path==='string')targets=(await datasets.read(repository,branch)).attachments.find(item=>item.path===body.path)?.rowIds??[];
     await workflows.beforeWrite(repository,identity,branch,targets,scope==='row'?'assign-labels':scope==='file'?'edit-file-labels':'edit-dataset-labels',{scope,path:typeof body.path==='string'?body.path:undefined,operations:[]});
   });
-  const releaseService=new ReleaseService({provider,readDataset:(repository,reference)=>datasets.read(repository,reference),rootDir:path.join(path.dirname(config.demoFile),'releases'),authorize:async(repository,identity,capability)=>{await access.requireCapability(repository,identity,capability);},preflight:(repository,snapshot)=>workflows.preflight(repository,snapshot.commitId),mainBranch:async repository=>(await settings.read(repository)).policy.defaultBranch});
-  await releaseService.init();registerReleaseRoutes(app,releaseService);registerArchiveDiffRoutes(app,provider);
-  const zipImports=registerZipImportRoutes(app,{provider,rootDir:path.join(path.dirname(config.demoFile),'zip-import'),onRepositoryCreated:repository=>activity.recordCreated(repository),authorize:async(repository,identity,creating)=>{if(creating&&identity.kind!=='owner')throw new ApiError(403,'OWNER_REQUIRED','仅实例管理员可创建项目。');if(!creating)await access.requireCapability(repository,identity,'data.edit');},importDataset:async(repository,identity,input)=>{if(input.labels?.columns.length)await access.requireCapability(repository,identity,'schema.manage');return datasets.initialize(repository,identity,input);}});
+  releaseService=new ReleaseService({provider,readDataset:(repository,reference)=>readPublishingDataset(datasets,repository,reference),rootDir:path.join(path.dirname(config.demoFile),'releases'),withHeavyWork:work=>capacity.runHeavy(work,true),authorize:async(repository,identity,capability)=>{await access.requireCapability(repository,identity,capability);if(capability==='release.manage'||capability==='data.export')await sourceAccess.requireSource(repository,identity);},preflight:(repository,snapshot)=>snapshot.totalRows?workflows.preflight(repository,snapshot.commitId,snapshot.rowIds):Promise.resolve({ok:true,issues:[]}),mainBranch:async repository=>(await settings.read(repository)).policy.defaultBranch});
+  await releaseService.init();operationServices.release=async(repository,id,identity)=>{const item=await releaseService.get(repository,id,identity);if(['ready','published'].includes(item.status))for(const asset of item.assets)await releaseService.download(repository,id,asset.id,identity);return item;};registerReleaseRoutes(app,releaseService);registerArchiveDiffRoutes(app,provider);
+  const zipImports=registerZipImportRoutes(app,{provider,rootDir:path.join(path.dirname(config.demoFile),'zip-import'),onRepositoryCreated:async(repository,identity)=>{await activity.recordCreated(repository);},authorize:async(repository,identity,creating)=>{if(creating&&identity.kind!=='owner')throw new ApiError(403,'OWNER_REQUIRED','仅实例管理员可创建项目。');if(!creating)await access.requireCapability(repository,identity,'data.edit');},importDataset:async(repository,identity,input)=>{if(input.labels?.columns.length)await access.requireCapability(repository,identity,'schema.manage');return datasets.initialize(repository,identity,input);}});
   registerDatasetImportRoutes(app,{provider,datasets,zipImports,access,drafts});
   const countCache=new Map<string,{sampleCount:number;sampleCountCommitId:string}>();
   const withSampleCount=async(summary:RepoSummary):Promise<RepoSummary>=>{
@@ -157,19 +212,21 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 12 } });
 
   const readiness = () => provider.checkReady ? provider.checkReady() : Promise.resolve(provider.ready);
-  app.get('/api/health', async () => ({ ready: await readiness(), mode: config.demo ? 'demo' : 'live', version: APPLICATION_VERSION }));
+  app.get('/api/health', async () => ({ ready: await readiness(), mode: config.demo ? 'demo' : 'live', version: APPLICATION_VERSION,...(runtime?{runtime:runtime.state()}:{}),pendingReconciliation:journal.list({state:'reconciliation-required'}).total>0 }));
+  app.get('/api/operations/health',async request=>{if(requestIdentity(request).kind!=='owner')throw new ApiError(403,'OWNER_REQUIRED','仅实例管理员可查看运维详情。');return {version:APPLICATION_VERSION,runtime:runtime?.state()??{mode:'injected-test',singleWriter:false},capacity:capacity.snapshot(),pendingReconciliation:journal.list({state:'reconciliation-required'}).total,backup:await readBackupHealth(path.join(path.dirname(config.demoFile),'operations/last-backup.json'))};});
   app.get('/api/status', async (request): Promise<AppStatus> => ({ mode: config.demo ? 'demo' : 'live', ready: await readiness(), upstream: config.upstream, version: APPLICATION_VERSION, authenticated: authenticated(request), identity:authenticated.identity(request), capabilities:{...provider.capabilities,reasons:{...provider.capabilities.reasons,annotations:'规范在组织标签管理维护；样本正文、三级标签与片段标注按条目版本化，任务复核后合并，固定版本发布。',metadata:'仓库设置与协作权限写入 Oxen 版本文件；访问控制在 BFF 执行，上游服务仅本机监听。',naturalLanguageQuery:'Codex 根据字段结构生成只读计划，数据本机完整扫描；也可明确选择规则查询，不自动降级。'}} }));
   app.get('/api/capabilities', async () => provider.capabilities);
 
   app.get('/api/repos', async request => {
     const { namespace } = z.object({ namespace: name.optional() }).parse(request.query),visible=lifecycle.filter(await access.filterRepositories(requestIdentity(request),await provider.repos(namespace))),enriched:RepoSummary[]=[];
-    for(let start=0;start<visible.length;start+=3)enriched.push(...await Promise.all(visible.slice(start,start+3).map(async summary=>withSampleCount(await catalog.enrichSummary(summary,requestIdentity(request))))));
+    const sourceVisible:RepoSummary[]=[];for(const summary of visible)if(await sourceAccess.mayReadSource({namespace:summary.namespace,repo:summary.name},requestIdentity(request)))sourceVisible.push(summary);
+    for(let start=0;start<sourceVisible.length;start+=3)enriched.push(...await Promise.all(sourceVisible.slice(start,start+3).map(async summary=>withSampleCount(await catalog.enrichSummary(summary,requestIdentity(request))))));
     const updated=(item:RepoSummary)=>{const time=Date.parse(item.activity?.modifiedAt??'');return Number.isFinite(time)?time:Number.NEGATIVE_INFINITY;};
     return enriched.sort((a,b)=>updated(a)===updated(b)?`${a.namespace}/${a.name}`.localeCompare(`${b.namespace}/${b.name}`):updated(a)>updated(b)?-1:1);
   });
   app.post('/api/repos', async (request, reply) => {
     const input = z.object({ namespace: name, name, description: z.string().max(4000).default(''), visibility: z.enum(['public', 'private']).optional() }).parse(request.body);
-    const result = await provider.createRepo(input); await activity.recordCreated({namespace:input.namespace,repo:input.name});await settings.update({namespace:input.namespace,repo:input.name},{description:input.description,...(input.visibility?{visibility:input.visibility}:{})},requestIdentity(request));reply.code(201); return settings.applyToSummary(result);
+    const result = await provider.createRepo(input),repository={namespace:input.namespace,repo:input.name};await activity.recordCreated(repository);await settings.update(repository,{description:input.description,...(input.visibility?{visibility:input.visibility}:{})},requestIdentity(request));reply.code(201); return settings.applyToSummary(result);
   });
   app.get(base, async request => withSampleCount(await catalog.enrichSummary(await settings.applyToSummary(await provider.repo(key(request))),requestIdentity(request))));
   app.get(`${base}/catalog`,async request=>{const input=z.object({ref}).parse(request.query);return catalog.branchSummary(key(request),input.ref,requestIdentity(request));});
@@ -206,7 +263,7 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
       const changesPolicy=(await provider.diff(repo,target.commitId,source.commitId)).some(change=>repositoryPolicyPath(change.path));
       await access.require(repo,actor,changesPolicy?'admin':'write');
       const result=String(await provider.merge(repo,input.source,input.target,{expectedSourceCommitId:source.commitId,expectedTargetCommitId:target.commitId,beforeWrite:async()=>{await access.require(repo,actor,changesPolicy?'admin':'write');await mergeGuard();}}));
-      await workflows.markMerged(repo,input.target).catch(error=>app.log.error({err:error},'Workflow reconciliation pending after successful merge'));return result;
+      await workflows.markMerged(repo,input.target);return result;
     });jobRepositories.set(job.id,repo);return job;
   });
   app.get(`${base}/workspaces`, async request => provider.workspaces(key(request)));
@@ -233,7 +290,7 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
     const actor=requestIdentity(request);
     const job=jobs.add(`${repo.namespace}/${repo.repo}`, 'push', async () => {await access.require(repo,actor,'write');return provider.push!(repo,input.branch,{beforeWrite:async()=>{await access.require(repo,actor,'write');}});});jobRepositories.set(job.id,repo);return job;
   });
-  app.get('/api/jobs/:id', async request => {const id=z.string().uuid().parse((request.params as { id: string }).id),repo=jobRepositories.get(id);if(repo)await access.require(repo,requestIdentity(request),'read');return jobs.get(id);});
+  app.get('/api/jobs/:id', async request => {const id=z.string().uuid().parse((request.params as { id: string }).id),repo=jobRepositories.get(id);if(repo){await access.require(repo,requestIdentity(request),'read');await sourceAccess.requireSource(repo,requestIdentity(request));}return jobs.get(id);});
   app.get(`${base}/annotations`, async request => { const input = z.object({ path: filename.optional(), ref: ref.optional() }).parse(request.query); return provider.annotations(key(request), input.path, input.ref); });
   app.post(`${base}/annotations`, async request => {
     key(request);
@@ -247,7 +304,9 @@ export async function createApp(config: Config, injectedProvider?: Provider) {
 
   registerLabelRoutes(app, provider);
   registerArchiveRoutes(app, provider);
-  await registerMergeRequests(app,{provider,access,jobs,filename:path.join(path.dirname(config.demoFile),'merge-requests.json'),onJob:(jobId,repo)=>jobRepositories.set(jobId,repo),beforeMerge:async(repository,identity,source,target)=>{await writeGuard.assertMergeAllowed(repository,identity,target,source);await workflows.beforeMerge(repository,identity,source,target);},afterMerge:async(repository,_identity,_source,target)=>{await workflows.markMerged(repository,target).catch(error=>app.log.error({err:error},'Workflow reconciliation pending after successful merge'));}});
+  const mergeRequests=await registerMergeRequests(app,{provider,access,jobs,filename:path.join(path.dirname(config.demoFile),'merge-requests.json'),onJob:(jobId,repo)=>jobRepositories.set(jobId,repo),beforeMerge:async(repository,identity,source,target)=>{await writeGuard.assertMergeAllowed(repository,identity,target,source);await workflows.beforeMerge(repository,identity,source,target);},afterMerge:async(repository,_identity,_source,target)=>{await workflows.markMerged(repository,target);}});
+  operationServices.resolveRef=async(request,fallback)=>{if(request.routeOptions.url?.endsWith('/merge-requests/:id/merge'))return mergeRequests.get(key(request),String((request.params as {id:string}).id)).target;return fallback;};
+  operationServices.afterMerged=async(repository,target,record)=>{await workflows.markMerged(repository,target);for(const item of mergeRequests.list(repository).filter(item=>item.status==='merging'&&item.sourceCommitId===record.anchors.sourceCommitId&&item.targetCommitId===record.anchors.targetCommitId&&item.target===target)){await mergeRequests.mutate(repository,item.id,item.revision,value=>{value.status='merged';value.mergedCommitId=record.anchors.targetHead??'';delete value.mergeError;delete value.interrupted;delete value.attemptId;});}};
   registerTableEditor(app,provider);
   registerImportRoutes(app, provider,async(request,key,creating)=>{if(creating){if(requestIdentity(request).kind!=='owner')throw new ApiError(403,'OWNER_REQUIRED','仅实例所有者可创建仓库。');}else await access.requireCapability(key,requestIdentity(request),'data.edit');},{beforeWrite:(...args)=>workflows.beforeWrite(...args),onRepositoryCreated:repository=>activity.recordCreated(repository)});
   const staticRoot = path.join(config.projectRoot, 'apps/web/dist');

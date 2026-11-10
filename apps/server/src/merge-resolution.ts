@@ -1,5 +1,6 @@
+import {durableWriteJson} from './durable-store.js';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CommitItem, MergeFieldConflict, MergeResolutionDecision, MergeResolutionFile, MergeResolutionPreview, MergeResolutionRequest, MergeResolutionResult, RequestIdentity } from '../../../packages/shared/src/index.js';
 import type { DatasetLabelRecord } from '../../../packages/shared/src/dataset.js';
@@ -78,7 +79,7 @@ export class MergeResolutionService {
     const preview:MergeResolutionPreview={source,target,baseCommitId:base,sourceCommitId:inspection.sourceCommitId,targetCommitId:inspection.targetCommitId,files,fingerprint:'',canResolve:files.length>0&&files.every(file=>file.allowedChoices.length>0),warnings:['裁决提交将合并目标进入源分支并推送源分支；目标分支不会被本操作合并。','完成后必须刷新 MR，并对受影响内容重新提交复核。',...(!files.length?['没有原生冲突，请使用常规合并请求流程。']:[])],native:inspection.native};
     preview.fingerprint=hash(canonicalJson({...preview,fingerprint:undefined}));return preview;
   }
-  private async audit(entry:Record<string,unknown>){const operation=this.auditChain.then(async()=>{let entries:unknown[]=[];try{entries=JSON.parse(await readFile(this.options.filename,'utf8'));if(!Array.isArray(entries))throw new Error('Invalid recovery audit');}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}entries.push(entry);await mkdir(path.dirname(this.options.filename),{recursive:true});const temporary=this.options.filename+'.'+randomUUID()+'.tmp';await writeFile(temporary,JSON.stringify(entries,null,2)+'\n',{mode:0o600});await rename(temporary,this.options.filename);});this.auditChain=operation.then(()=>{},()=>{});await operation;}
+  private async audit(entry:Record<string,unknown>){const operation=this.auditChain.then(async()=>{let entries:unknown[]=[];try{entries=JSON.parse(await readFile(this.options.filename,'utf8'));if(!Array.isArray(entries))throw new Error('Invalid recovery audit');}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}entries.push(entry);await mkdir(path.dirname(this.options.filename),{recursive:true});await durableWriteJson(this.options.filename,entries);});this.auditChain=operation.then(()=>{},()=>{});await operation;}
   resolve(key:RepoKey,identity:RequestIdentity,input:MergeResolutionRequest):Promise<MergeResolutionResult>{const name=key.namespace+'/'+key.repo;const operation=(this.chains.get(name)??Promise.resolve()).then(()=>this.execute(key,identity,input));const settled=operation.then(()=>{},()=>{});this.chains.set(name,settled);void settled.then(()=>{if(this.chains.get(name)===settled)this.chains.delete(name);});return operation;}
   private async execute(key:RepoKey,identity:RequestIdentity,input:MergeResolutionRequest){
     const preview=await this.compare(key,input.source,input.target,input.base);if(preview.sourceCommitId!==input.expectedSourceCommitId||preview.targetCommitId!==input.expectedTargetCommitId||preview.fingerprint!==input.fingerprint)throw new ApiError(409,'MERGE_RESOLUTION_STALE','分支或冲突内容已更新，请重新比较；尚未写入。');if(!preview.canResolve)throw new ApiError(409,'MERGE_RESOLUTION_BLOCKED','包含不支持或受保护的冲突，不能提交裁决。');

@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import {durableWriteJson} from './durable-store.js';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Annotation } from '../../../packages/shared/src/index.js';
@@ -30,9 +31,7 @@ export class ExtensionStore {
       try {
         result = operation();
         await mkdir(path.dirname(this.filename), { recursive: true });
-        const temp = `${this.filename}.${randomUUID()}.tmp`;
-        await writeFile(temp, JSON.stringify(this.state, null, 2), { mode: 0o600 });
-        await rename(temp, this.filename);
+        await durableWriteJson(this.filename,this.state);
       } catch (error) { this.state = previous; throw error; }
     });
     this.chain = next.catch(() => {});

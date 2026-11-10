@@ -5,7 +5,7 @@ export type SchemaLayer = 'dataset' | 'sample';
 export interface GovernanceDomain { id:string; name:string; description:string }
 export interface GovernancePreset extends LabelTemplate {targetKind:TemplateTargetKind;domain:string;defaultVisibleKeys:string[]}
 
-export type DatasetCapability = 'read' | 'data.edit' | 'dataset.assign' | 'annotation.assign' | 'annotation.review' | 'tasks.manage' | 'schema.bind' | 'schema.manage' | 'merge.execute' | 'release.manage' | 'release.share' | 'data.export' | 'project.admin';
+export type DatasetCapability = 'read' | 'data.edit' | 'dataset.assign' | 'annotation.assign' | 'annotation.review' | 'tasks.manage' | 'schema.bind' | 'schema.manage' | 'merge.execute' | 'release.manage' | 'release.share' | 'release.hidden' | 'data.export' | 'project.admin';
 export interface GovernanceOption { id: string; displayName: string; description?: string; deprecated?: boolean; legacyValue?: string }
 export interface DimensionDraft { id: string; displayName: string; type: 'single' | 'multi' | 'text'; description: string; semanticKey?: string; options: GovernanceOption[] }
 export interface PublishedDimension extends DimensionDraft { version: number; checksum: string; publishedAt: string; publishedBy: string }

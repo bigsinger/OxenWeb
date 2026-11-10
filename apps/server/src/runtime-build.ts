@@ -1,0 +1,10 @@
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {createReadStream} from 'node:fs';
+import {lstat,readdir} from 'node:fs/promises';
+import path from 'node:path';
+
+async function digest(filename:string){const hash=createHash('sha256');for await(const chunk of createReadStream(filename))hash.update(chunk);return hash.digest('hex');}
+/** Stable byte/path digest, independent of timestamps. No source values are returned or logged. */
+export async function buildTreeSha256(directory:string){const hash=createHash('sha256');async function walk(folder:string,prefix:string){for(const entry of(await readdir(folder,{withFileTypes:true})).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)){const filename=path.join(folder,entry.name),name=prefix+entry.name,info=await lstat(filename);if(info.isSymbolicLink())throw new Error('Build provenance refuses links');if(info.isDirectory())await walk(filename,name+'/');else if(info.isFile())hash.update(name+'\0'+info.size+'\0'+await digest(filename)+'\n');else throw new Error('Unsupported build artifact');}}await walk(path.resolve(directory),'');return hash.digest('hex');}
+export async function runtimeBuildProvenance(root:string){const head=spawnSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',windowsHide:true,timeout:5000}),status=spawnSync('git',['status','--porcelain','--untracked-files=normal','--','apps','packages','scripts','contracts','package.json','package-lock.json','tsconfig.base.json'],{cwd:root,encoding:'utf8',windowsHide:true,timeout:5000});const gitCommit=head.status===0&&/^[a-f0-9]{40}$/.test(head.stdout.trim())?head.stdout.trim():undefined;return{nodeVersion:process.version,...(gitCommit?{gitCommit}:{}),gitDirty:status.status===0?!!status.stdout.trim():null,serverBuildSha256:await buildTreeSha256(path.join(root,'apps/server/dist')),webBuildSha256:await buildTreeSha256(path.join(root,'apps/web/dist')),contractSha256:await digest(path.join(root,'contracts/oxen_server_openapi.json')),lockfileSha256:await digest(path.join(root,'package-lock.json'))};}

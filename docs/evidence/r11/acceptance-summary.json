@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-11-09T00:16:01.415Z",
+  "scope": "R11 field delivery projection and non-destructive data version restoration",
+  "oxen": {
+    "version": "0.67.0",
+    "coreModified": false,
+    "openApiModified": false
+  },
+  "regression": {
+    "tests": 410,
+    "passed": 403,
+    "skipped": 7,
+    "failed": 0,
+    "cancelled": 0,
+    "skipReason": "Explicit historical live-test switches, see tests/README.md",
+    "buildPassed": true,
+    "generatedContractsIdentical": true,
+    "fieldSelectionJointTests": 52,
+    "fieldSelectionRoundtripTests": 6,
+    "restoreAndActivityJointTests": 20
+  },
+  "cleanSource": {
+    "copied": 448,
+    "sourceTreeSha256": "998750b8d3b6828903918c70897e7700f51f64c32afc0df58cf2f878e264226b",
+    "excludedRuntime": true,
+    "excludedSecrets": true,
+    "sourceUncommittedChangesIncluded": true,
+    "passed": true,
+    "commands": [
+      "npm ci",
+      "npm run generate:api",
+      "npm run build",
+      "npm test"
+    ],
+    "tests": 410,
+    "passedTests": 403,
+    "skippedTests": 7,
+    "dependencyAuditVulnerabilities": 0,
+    "contractMatches": true,
+    "runtimeDataCopied": false,
+    "note": "Local independent source export and install/build/test. Final evidence prose and screenshots were added afterward; remote CI was not run."
+  },
+  "fieldDelivery": {
+    "defaultExport": true,
+    "appliesToFormalRelease": true,
+    "workingSnapshotsComplete": true,
+    "sourceAndEditorColumnsPreserved": true,
+    "originalPublishedAssetsImmutable": true,
+    "stableSystemSampleIdRetained": true,
+    "notAnonymizationOrAccessControl": true,
+    "emptyAllFieldsRejected": true,
+    "sourceAttachmentBypassRejected": true,
+    "originalArchiveConflictRejected": true
+  },
+  "nativeRestore": {
+    "executed": true,
+    "passed": true,
+    "version": "0.67.0",
+    "logicalRows": 2,
+    "newCommitParentConfirmed": true,
+    "historyPreserved": true,
+    "policyPreserved": true,
+    "emptyFileRestored": true,
+    "binarySha256": "64f498a420579fb7cffc840227b18a59d79433b5f7c0e27d9a1508b86fc2b947",
+    "staleCasRejected": true,
+    "lostReplyMarkerReconciled": true,
+    "duplicateCommitRejected": true,
+    "zipExecuted": false,
+    "productionTouched": false,
+    "isolated3008Stopped": true
+  },
+  "browser": {
+    "featureOrigin": "http://localhost:5174",
+    "featureRows": 12,
+    "defaultCheckboxPassed": true,
+    "uncheckedNavigationAndReloadPassed": true,
+    "widthUndoPreservesExportChoice": true,
+    "explicitSavePassed": true,
+    "restorePreviewAndConfirmationPassed": true,
+    "textboxEnterDoesNotCommit": true,
+    "historyRefreshAfterSuccessPassed": true,
+    "unknownOpensNewTabAndKeepsCustomInput": true,
+    "unknownResultCode": "COMMIT_MARKER_VERIFIED",
+    "unknownResultAddedOneCommit": true,
+    "historyAfterUnknown": 11,
+    "mobileViewport": {
+      "width": 390,
+      "height": 844,
+      "documentClientAndScrollWidth": 380
+    },
+    "restoreTableFontPx": 14,
+    "restoreTableVerticalAlign": "middle",
+    "temporaryViewportReset": true,
+    "normalFeatureReload": {
+      "width": 832,
+      "height": 932,
+      "errorWarnLogs": 0
+    },
+    "deployedOrigin": "http://localhost:3001",
+    "deployedSyntheticProject": "local/r8-project-acceptance-mw7tdcfk",
+    "deployedReadOnlySourceHead": "d3ec343ab4cfc2f12d0331dc14d892d4",
+    "deployedViewport": {
+      "width": 1280,
+      "height": 720
+    },
+    "deployedDefaultCheckboxAndRestoreEntryPassed": true,
+    "deployedErrorWarnLogsAfterReload": 0,
+    "sourceWritesOnProduction": false,
+    "evidenceIndex": "docs/evidence/r11/README.md"
+  },
+  "originalBrowserDownload": {
+    "origin": "http://127.0.0.1:5173",
+    "userExplicitlyAuthorized": true,
+    "status": "Blocked by automatic browser approval after explicit chat authorization; manual handoff pending",
+    "gateReason": "User declined download permission; browser did not acquire download authority",
+    "expectedFilename": "ai-safety-ui-qa-snapshot-2026-11-08T14-45-01-651Z.zip",
+    "expectedSha256": "81b67c048caa0dff9b43a0ae10882e9737c5429b7b1cf9be2b9b137f0214fec9",
+    "verifiedSha256": null,
+    "downloadedFilePath": null,
+    "passed": false,
+    "alternateDownloadAttempted": false,
+    "originalPageAndServicesRetained": true
+  },
+  "backup": {
+    "generation": "3c0027b6-4922-42f3-a845-62d7d38418af",
+    "path": ".backups/2026-11-08T23-56-00-453Z-0614e34a",
+    "cutAt": "2026-11-08T23:56:20.911Z",
+    "files": 3709,
+    "bytes": 128955797,
+    "maintenanceMs": 463787,
+    "maintenanceWindowMet": true,
+    "runtimeHashes": {
+      "serverBuildSha256": "58c17ae41fdfb7afb0b5a0a5b3efbc1b4b74126087399234b892121ea693f7c5",
+      "webBuildSha256": "59a8d8d4e37f10205b4e6e8a0ad842274b35c84350f8a92c4836fe2a17e4dc16",
+      "contractSha256": "2ae57812994900f768c841e7e20d25418555ffbf37c3690775e2af5b8c581660",
+      "lockfileSha256": "a553bb5a6823eb499328d13c52aa5a563d76398d0d51470f30330c3869dba513"
+    },
+    "offsiteVerified": false,
+    "dailyScheduleInstalled": false
+  },
+  "fullRecovery": {
+    "freshRestore": true,
+    "matchedCurrentBuild": true,
+    "restoredBffFromVerifiedBuild": true,
+    "announcedAt": "2026-11-09T00:05:30.903Z",
+    "readbackCompletedAt": "2026-11-09T00:10:17.979Z",
+    "RTOms": 287076,
+    "scriptElapsedMs": 281854,
+    "failureCount": 0,
+    "counts": {
+      "repositories": 15,
+      "branches": 44,
+      "datasets": 13,
+      "rows": 11860,
+      "fileChecksumsVerified": 3709,
+      "mergeRequests": 1,
+      "tasks": 0,
+      "snapshots": 1,
+      "releases": 0,
+      "releaseAssets": 3,
+      "releaseAssetBytes": 4964210,
+      "recycleEntries": 2,
+      "privateDrafts": 0,
+      "originalActorUiCheckpoints": 6,
+      "crossActorIsolationChecks": 6,
+      "credentialsRevoked": 0
+    },
+    "sourceHeadRowLabelBindingDigestsMatched": true,
+    "privateFullApiCoverage": true,
+    "verificationCredentialsDisposed": true,
+    "producerReady": true,
+    "isolated3010Stopped": true,
+    "note": "Same-machine recovery with official binary and Node already available. Independent/offline RTO and sustained daily RPO remain unverified."
+  },
+  "datasetTiers": {
+    "status": "Proposal only, not implemented",
+    "proposal": "docs/proposals/dataset-tiers-r11.md",
+    "default": "Restricted canonical repository plus eligibility/use fields and fixed output views",
+    "outputs": [
+      "gold.jsonl",
+      "regression.jsonl",
+      "nonhidden-all.jsonl",
+      "hidden.jsonl"
+    ],
+    "questionPending": "Do algorithm and QA teams only download packages or also receive repository read/edit access?",
+    "hiddenPrivateRepositoryRequiredIfTeamsReadMaster": true
+  },
+  "hygiene": {
+    "featureQa3012And5174Stopped": true,
+    "downloadHandoff3005And5173Retained": true,
+    "runtimeFilesTracked": 0,
+    "sampleBundlesTracked": 0,
+    "whitespaceCheckPassed": true,
+    "newGitCommitOrPush": false
+  },
+  "pending": [
+    "Manual completion and file-path/SHA verification of the original browser ZIP download.",
+    "Dataset-tier collaboration mode and plan confirmation before implementation.",
+    "Independent backup destination/key/window and daily task deployment.",
+    "Actual team-mode member onboarding and remote CI execution."
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "scope": "Local BFF + official Oxen 0.67 synthetic guard/reconciliation acceptance",
+  "date": "2026-11-09",
+  "syntheticOnly": true,
+  "realProjectsTouched": false,
+  "rawJournalEdited": false,
+  "requestDigestProof": true,
+  "completeAnchoredHistoryProof": true,
+  "noManagedWorkspaces": true,
+  "historicalUnknown": 8,
+  "historicalVerifiedFailed": 8,
+  "reconciliationReason": "FIELD_DELETE_PREWRITE_REJECTION_VERIFIED",
+  "newGuardCases": [
+    {
+      "status": 422,
+      "code": "DATASET_FIELD_DELETE_CONFIRM",
+      "state": "failed",
+      "anchorsEmpty": true
+    },
+    {
+      "status": 422,
+      "code": "DATASET_FIELD_DELETE_PROTECTED",
+      "state": "failed",
+      "anchorsEmpty": true
+    },
+    {
+      "status": 409,
+      "code": "DATASET_VERSION_CONFLICT",
+      "state": "failed",
+      "anchorsEmpty": true
+    }
+  ],
+  "headUnchanged": true,
+  "noDataWrites": true,
+  "health": {
+    "ready": true,
+    "pendingReconciliation": false,
+    "acceptsWrites": true
+  },
+  "completedAt": "2026-11-09T10:51:20.104Z",
+  "privateLocalReceipts": [
+    ".data/r16-native-fields/reconciliation.json",
+    ".data/r16-native-fields/prewrite-rejections.json"
+  ],
+  "limits": [
+    "Only the three exact local field-deletion guard codes are reconciled; incomplete history, uncertain workspaces, mutation anchors and unrelated failures stay unresolved.",
+    "This is neither a new backup/recovery drill nor a browser download verification."
+  ]
+}

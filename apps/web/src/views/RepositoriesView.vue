@@ -11,11 +11,12 @@ import RepositoryRecycleBin from '../components/RepositoryRecycleBin.vue';
 import {withProjectKeywords} from '../project-label-chips';
 import { post, request } from '../api';
 import { useAppStore } from '../stores/app';
+import {credentialContext,repositoryQueryKey} from '../access-context';
 const app=useAppStore(), cache=useQueryClient(), router=useRouter(), route=useRoute();
 const explore=computed(()=>route.name==='explore');
 const canCreate=computed(()=>app.status?.identity?.kind==='owner'&&app.status?.capabilities.write===true);
 const canImport=computed(()=>['owner','collaborator'].includes(app.status?.identity?.kind||'')&&app.status?.capabilities.write===true);
-const {data:repos,isPending,error,refetch}=useQuery({queryKey:computed(()=>['repos',app.status?.identity?.id||'guest']),queryFn:()=>request<RepoSummary[]>('/repos')});
+const {data:repos,isPending,error,refetch}=useQuery({queryKey:computed(()=>repositoryQueryKey(app.status?.identity)),queryFn:({signal})=>request<RepoSummary[]>('/repos',{signal})});
 const search=ref(typeof route.query.q==='string'?route.query.q:''),searchInput=ref<HTMLInputElement|null>(null),sort=ref<CatalogSort>('updated'),layout=ref<'grid'|'list'>('grid');
 const catalogFilters=ref<CatalogFilter[]>([]),catalogState=ref('all'),keywordFilters=ref<string[]>([]);
 const namespaceFilter=ref(''),visibilityFilter=ref('all'),showImport=ref(false),showNew=ref(false),busy=ref(false),formError=ref('');
@@ -33,7 +34,7 @@ const hasFilters=computed(()=>!!search.value||!!namespaceFilter.value||visibilit
 watch(repos,values=>{if(!namespaceTouched.value&&values?.[0]?.namespace)form.value.namespace=values[0].namespace;},{immediate:true});
 watch(()=>route.query.q,value=>{search.value=typeof value==='string'?value:'';});
 watch(namespaceFilter,()=>{catalogFilters.value=[];keywordFilters.value=[];});
-watch(()=>app.status?.identity?.id,()=>{namespaceFilter.value='';visibilityFilter.value='all';catalogFilters.value=[];keywordFilters.value=[];catalogState.value='all';});
+watch(()=>credentialContext(app.status?.identity),()=>{namespaceFilter.value='';visibilityFilter.value='all';catalogFilters.value=[];keywordFilters.value=[];catalogState.value='all';});
 watch(explore,()=>{namespaceFilter.value='';visibilityFilter.value='all';catalogFilters.value=[];keywordFilters.value=[];catalogState.value='all';});
 function bytes(value:number){if(!value)return '0 B';const index=Math.min(Math.floor(Math.log(value)/Math.log(1024)),3);return `${(value/1024**index).toFixed(index?1:0)} ${['B','KB','MB','GB'][index]}`;}
 function relativeDate(value?:string){const time=Date.parse(value??'');if(!Number.isFinite(time))return '时间未提供';const minutes=Math.max(0,Math.floor((Date.now()-time)/60000));if(minutes<1)return '刚刚';if(minutes<60)return `${minutes} 分钟前`;if(minutes<1440)return `${Math.floor(minutes/60)} 小时前`;if(minutes<43200)return `${Math.floor(minutes/1440)} 天前`;return new Date(time).toLocaleDateString('zh-CN');}
@@ -52,7 +53,7 @@ function samplesTitle(repo:RepoSummary){return repo.sampleCountState==='ready'?`
 function resetFilters(){search.value='';namespaceFilter.value='';visibilityFilter.value='all';catalogFilters.value=[];keywordFilters.value=[];catalogState.value='all';}
 function openNew(){formError.value='';showNew.value=true;}
 function closeNew(){if(!busy.value)showNew.value=false;}
-async function create(){if(busy.value||!canCreate.value)return;busy.value=true;formError.value='';try{await post('/repos',{namespace:form.value.namespace.trim(),name:form.value.name.trim(),description:form.value.description,visibility:form.value.visibility});await cache.invalidateQueries({queryKey:['repos']});showNew.value=false;form.value.name='';form.value.description='';app.notify('项目已创建');}catch(cause){formError.value=(cause as Error).message;}finally{busy.value=false;}}
+async function create(){if(busy.value||!canCreate.value)return;busy.value=true;formError.value='';try{await post('/repos',{namespace:form.value.namespace.trim(),name:form.value.name.trim(),description:form.value.description,visibility:form.value.visibility});await cache.invalidateQueries({queryKey:['repos']});showNew.value=false;form.value.name='';form.value.description='';app.notify('项目已创建，可导入或直接添加样本。');}catch(cause){formError.value=(cause as Error).message;}finally{busy.value=false;}}
 async function imported(result:JsonlImportResult){showImport.value=false;await cache.invalidateQueries({queryKey:['repos']});app.notify(`已导入 ${result.rowCount.toLocaleString()} 条样本`);await router.push({path:`/repos/${encodeURIComponent(result.namespace)}/${encodeURIComponent(result.repo)}/table`,query:{branch:result.branch}});}
 function focusSearch(event:KeyboardEvent){if(event.key!=='/'||event.ctrlKey||event.metaKey||event.altKey)return;const target=event.target as HTMLElement|null;if(target?.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName||''))return;const modalOpen=Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"],[role="alertdialog"]')).some(element=>element.getClientRects().length>0&&getComputedStyle(element).visibility!=='hidden');if(!modalOpen){event.preventDefault();searchInput.value?.focus();}}
 onMounted(()=>window.addEventListener('keydown',focusSearch));onBeforeUnmount(()=>window.removeEventListener('keydown',focusSearch));

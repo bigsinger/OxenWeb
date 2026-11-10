@@ -1,0 +1,93 @@
+{
+  "model": "whole-dataset",
+  "verifiedAt": "2026-11-10T03:36:59.083Z",
+  "tests": {
+    "total": 544,
+    "passed": 537,
+    "failed": 0,
+    "conditionalSkipped": 7
+  },
+  "typecheck": true,
+  "scriptStrictTypecheck": true,
+  "isolatedStageBuild": true,
+  "deployment": {
+    "passed": true,
+    "startedAt": "2026-11-10T03:36:44.472Z",
+    "completedAt": "2026-11-10T03:36:46.083Z",
+    "builds": [
+      {
+        "name": "server",
+        "sha256": "79c29e04414e44cb6035fc5c787c236ffe54f1c4ba96f775cf89a5fde6111c16"
+      },
+      {
+        "name": "web",
+        "sha256": "3b4d6465f5fd555aa5a3c15d8326c67896573c2477b1dd6d431ad42c8feadae5"
+      }
+    ]
+  },
+  "health": {
+    "ready": true,
+    "acceptsWrites": true,
+    "pendingReconciliation": false
+  },
+  "retiredEndpoints404": true,
+  "realData": {
+    "projects": 4,
+    "mainCanonicalBytesAndDraftDigestsUnchanged": true,
+    "automaticallyPublished": false
+  },
+  "nativeAcceptance": {
+    "passed": true,
+    "mode": "whole-dataset",
+    "project": {
+      "namespace": "local",
+      "repo": "r20-release-mwa4zyu0"
+    },
+    "initialRows": 4,
+    "updatedRows": 4,
+    "allBusinessCategoriesIncluded": true,
+    "excludedFieldsOmitted": true,
+    "firstBaseline": null,
+    "secondBaselineVersion": "r20-v1",
+    "changes": {
+      "added": 1,
+      "removed": 1,
+      "modified": 1
+    },
+    "automaticNotesVerified": true,
+    "commitSummaryVerified": true,
+    "checksumsVerified": true,
+    "readmePreserved": true,
+    "immutablePriorBytes": true,
+    "releaseConsumerAllowed": true,
+    "internalSnapshotConsumerDenied": true,
+    "retiredEndpoints404": true,
+    "retiredRequestFlags400": true,
+    "latestSelected": true,
+    "latestReleaseId": "8847e2b2-0bb8-4c84-b994-c74edd4be9f4",
+    "sourceCommit": "4684c97f222ffbfc97b0fdf9cdca9fb8",
+    "archivesExecuted": false,
+    "productionTouched": false,
+    "browserDownloadAttempted": false,
+    "completedAt": "2026-11-10T03:35:24.352Z",
+    "official": "0.67.0"
+  },
+  "browser": {
+    "globalPublishingTemplateAbsent": true,
+    "projectViewTabAbsent": true,
+    "automaticNotesAndCounts": true,
+    "manualNotesSurviveErrorAndRecheck": true,
+    "syntheticCandidateBuiltAndPublished": true,
+    "wholeInternalSnapshotReady": true,
+    "emptyProjectState": true,
+    "narrow390": true,
+    "productionRealProjectNavigationVerified": true,
+    "downloadAttempted": false,
+    "originalR11HandoffRetained": true
+  },
+  "upstreamStartedFromExistingStorage": true,
+  "initialBffWasStopped": true,
+  "fullProductionColdBackupRepeated": false,
+  "rollbackBuildsAndRequiredDependenciesArchived": true,
+  "credentialsIncluded": false
+}

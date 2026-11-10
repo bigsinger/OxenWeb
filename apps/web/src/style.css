@@ -29,13 +29,22 @@
   --workbench-inspector-width: 720px;
   --workbench-overlay: #0006;
   --workbench-check-width: 32px;
-  --workbench-number-width: 44px;
+  --workbench-number-width: 64px;
   --workbench-label-width: 190px;
+  --workbench-table-font-size: 14px;
+  --workbench-table-header-size: 14px;
+  --workbench-table-alias-size: 12px;
+  --workbench-table-line-height: 1.6;
+  --workbench-activity-time-width: 180px;
+  --workbench-activity-actor-width: 140px;
+  --workbench-evaluation-visibility-width: 156px;
+  --workbench-evaluation-suites-width: 160px;
+  --workbench-evaluation-family-width: 184px;
   --green: var(--primary);
   --green-dark: var(--primary-hover);
   --green-light: var(--primary-soft);
 }
-* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #505057 #202023; }
+* { box-sizing: border-box; scrollbar-width: auto; scrollbar-color: #505057 #202023; }
 body { margin: 0; min-width: 320px; }
 /* Tables share one vertical alignment rule, including scoped component tables. */
 #app table th, #app table td { vertical-align: middle; }
@@ -57,7 +66,7 @@ p { line-height: 1.7; }
 code,.mono { font-family: 'Cascadia Code',Consolas,'SFMono-Regular',monospace; }
 code { font-size: .92em; }
 ::selection { background: #8b35e266; color: #fff; }
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: var(--scrollbar-size,16px); height: var(--scrollbar-size,16px); }
 ::-webkit-scrollbar-track { background: #202023; }
 ::-webkit-scrollbar-thumb { background: #505057; border: 2px solid #202023; border-radius: 5px; }
 .muted { color: var(--muted); }
@@ -285,3 +294,5 @@ input[type=checkbox],input[type=radio] { accent-color: var(--primary); }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 @media(max-width:850px) { .project-switch-menu { position:fixed; top:78px; left:14px; right:14px; width:auto; max-width:none; } }
 @media(max-width:650px) { .project-switch-menu { top:68px; } }
+
+:root{--scrollbar-size:16px}*::-webkit-scrollbar{width:var(--scrollbar-size);height:var(--scrollbar-size)}*::-webkit-scrollbar-track{background:#202023}*::-webkit-scrollbar-thumb{background:#62626c;border:3px solid #202023;border-radius:8px;min-height:32px}*::-webkit-scrollbar-thumb:hover{background:#858590}*::-webkit-scrollbar-corner{background:#202023}

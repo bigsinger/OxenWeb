@@ -42,13 +42,8 @@ test('multi-select and explicit type changes produce independent constraints and
   draft.enabled=false;assert.deepEqual(Object.keys(sampleFieldConfiguration([draft])),[],'Removing config never removes the source field');
 });
 
-test('presentation widths round-trip without changing constraints and use bounded numeric units',()=>{
+test('retired width controls are absent while historical metadata remains opaque',()=>{
   const metadata:DatasetFieldMetadata={type:'string',enum:[''],nullable:false,width:{mode:'fixed',value:240}};
-  const draft=createSampleFieldDraft('title',metadata);assert.deepEqual(sampleFieldMetadata(draft),metadata);
-  draft.widthMode='weight';draft.widthValue='5';assert.deepEqual(sampleFieldMetadata(draft),{type:'string',enum:[''],nullable:false,width:{mode:'weight',value:5}});
-  draft.widthMode='auto';assert.deepEqual(sampleFieldMetadata(draft),{type:'string',enum:[''],nullable:false},'Auto removes only presentation width');
-  draft.widthMode='fixed';for(const value of ['47','2401','1.5','"120"','','0x40']){draft.widthValue=value;assert.throws(()=>sampleFieldMetadata(draft));}
-  for(const value of ['48','2400']){draft.widthValue=value;assert.equal(sampleFieldMetadata(draft)?.width?.value,Number(value));}
-  draft.widthMode='weight';for(const value of ['0','-1','1001','true','Infinity']){draft.widthValue=value;assert.throws(()=>sampleFieldMetadata(draft));}
-  draft.widthValue='0.25';assert.equal(sampleFieldMetadata(draft)?.width?.value,.25);
+  const draft=createSampleFieldDraft('title',metadata);assert.equal(Object.hasOwn(draft,'widthMode'),false);assert.deepEqual(sampleFieldMetadata(draft),metadata);
+  draft.export=false;assert.deepEqual(sampleFieldMetadata(draft),{...metadata,export:false});
 });

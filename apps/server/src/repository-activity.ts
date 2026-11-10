@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import {durableWriteJson} from './durable-store.js';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { RepoKey } from './provider.js';
 
@@ -21,8 +22,7 @@ export class RepositoryActivityStore {
       if (this.created[id]) return;
       const next = { ...this.created, [id]: new Date().toISOString() };
       await mkdir(path.dirname(this.filename), { recursive: true });
-      await writeFile(`${this.filename}.tmp`, JSON.stringify({ version: 1, created: next }), { mode: 0o600 });
-      await rename(`${this.filename}.tmp`, this.filename);
+      await durableWriteJson(this.filename,{version:1,created:next});
       this.created = next;
     });
     this.chain = current.catch(() => {}); await current;

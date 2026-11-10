@@ -2,8 +2,9 @@
 import { computed } from 'vue';
 import type { DatasetFieldMetadata, DatasetFieldOption } from '../../../../packages/shared/src/field-metadata';
 import { datasetFieldOptionMatches } from '../../../../packages/shared/src/dataset-field-validation';
+import { datasetFieldOptionLabel } from '../../../../packages/shared/src/field-option-labels';
 import { datasetCellControl, editableCellOptionIndex, editableCellSelectOption, editableCellToggleOption, type DatasetEditableCellDraft } from '../dataset-configured-editing';
-const props = defineProps<{ modelValue: DatasetEditableCellDraft; definition?: DatasetFieldMetadata; field: string; allowTypeSelection?: boolean }>();
+const props = defineProps<{ modelValue: DatasetEditableCellDraft; definition?: DatasetFieldMetadata; field: string; allowTypeSelection?: boolean; hidePresence?:boolean }>();
 const emit = defineEmits<{ 'update:modelValue': [value: DatasetEditableCellDraft]; commit: []; cancel: []; blur: [event: FocusEvent] }>();
 const control = computed(() => datasetCellControl(props.definition, props.modelValue));
 const choices = computed(() => props.definition?.enum ?? []), items = computed(() => props.definition?.items?.enum ?? []);
@@ -14,11 +15,11 @@ function has(option: DatasetFieldOption) { try { const values = JSON.parse(props
 function toggle(option: DatasetFieldOption, event: Event) { emit('update:modelValue', editableCellToggleOption(props.modelValue, option, (event.target as HTMLInputElement).checked)); }
 function keydown(event: KeyboardEvent) { if (event.isComposing) return; if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); emit('cancel'); } else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.stopPropagation(); emit('commit'); } }
 function kind(event: Event) { const value = (event.target as HTMLSelectElement).value as DatasetEditableCellDraft['kind']; const defaults = { string: '', number: '0', boolean: 'false', null: 'null', array: '[]', object: '{}' }; patch({ kind: value, text: defaults[value] }); }
-function label(option: DatasetFieldOption, options: DatasetFieldOption[]) { return options.some(other => String(other) === String(option) && typeof other !== typeof option) ? `${String(option)}（${typeof option}）` : String(option); }
+function label(option: DatasetFieldOption, options: DatasetFieldOption[]) { const alias=datasetFieldOptionLabel(props.definition,option);if(alias&&alias!==String(option))return `${alias}（${String(option)}）`;return options.some(other => String(other) === String(option) && typeof other !== typeof option) ? `${String(option)}（${typeof option}）` : String(option); }
 </script>
 <template>
   <div class="dataset-cell-controls" @keydown="keydown" @focusout="emit('blur',$event)">
-    <select :value="modelValue.presence" :aria-label="field+' 的值状态'" class="cell-presence" @change="patch({presence:($event.target as HTMLSelectElement).value as DatasetEditableCellDraft['presence']})"><option value="value">填写值</option><option value="null" :disabled="definition?.nullable===false">设为 null</option><option value="missing" :disabled="definition?.required===true">移除字段（未提供）</option></select>
+    <select v-if="!hidePresence" :value="modelValue.presence" :aria-label="field+' 的值状态'" class="cell-presence" @change="patch({presence:($event.target as HTMLSelectElement).value as DatasetEditableCellDraft['presence']})"><option value="value">填写值</option><option value="null" :disabled="definition?.nullable===false">设为 null</option><option value="missing" :disabled="definition?.required===true">移除字段（未提供）</option></select>
     <template v-if="!disabled">
       <select v-if="allowTypeSelection&&!definition?.type&&!definition?.enum" :aria-label="field+' 的编辑类型'" :value="modelValue.kind" @change="kind"><option value="string">string</option><option value="number">number</option><option value="boolean">boolean</option><option value="array">array</option><option value="object">object</option></select>
       <select v-if="control==='select'" data-cell-input :aria-label="'编辑 '+field" :value="editableCellOptionIndex(modelValue,choices)" @change="choose"><option value="-1" disabled>选择一个选项</option><option v-for="(option,index) in choices" :key="index" :value="String(index)">{{label(option,choices)}}</option></select>

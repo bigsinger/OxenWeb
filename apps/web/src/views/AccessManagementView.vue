@@ -1,0 +1,74 @@
+<script setup lang="ts">
+import {computed,onBeforeUnmount,ref,watch} from 'vue';
+import {onBeforeRouteLeave} from 'vue-router';
+import {Copy,KeyRound,LoaderCircle,Plus,RefreshCw,ShieldCheck} from 'lucide-vue-next';
+import type {RepositoryRole} from '@oxen/shared';
+import type {AccessManagementState,AccessTokenSummary,InstanceAccessRole} from '../../../../packages/shared/src/access-management';
+import {ApiError,post,request} from '../api';
+import {useAppStore} from '../stores/app';
+import '../styles/access-management.css';
+import {credentialContext,rotateForCurrentContext} from '../access-context';
+
+const props=withDefaults(defineProps<{ownOnly?:boolean}>(),{ownOnly:false}),app=useAppStore();
+const state=ref<AccessManagementState>(),loading=ref(false),busy=ref(false),error=ref(''),issuedToken=ref(''),copied=ref(false),search=ref('');
+const recipient=ref<'new'|'existing'>('new'),existingActorId=ref('');
+const name=ref(''),scope=ref<'project'|'instance'>('project'),project=ref(''),role=ref<RepositoryRole>('annotator'),globalRole=ref<InstanceAccessRole>('auditor'),expiryDays=ref('90'),filter=ref<'all'|'issued'|'own'>('all');
+let generation=0;
+const roles=[{id:'viewer',name:'只读'},{id:'annotator',name:'标注人员'},{id:'editor',name:'编辑与标注'},{id:'reviewer',name:'复核人员'},{id:'lead',name:'数据集负责人'},{id:'admin',name:'项目权限管理员'}] as const;
+const roleHelp:Record<RepositoryRole,string>={viewer:'浏览和导出，不能修改。',annotator:'填写样本/文件标签；任务授权范围继续生效。',editor:'编辑样本正文及填写标签；不能自审。',reviewer:'独立复核，不代替本人标注。',lead:'项目标签、任务分配、模板采用、合并和发布。',admin:'管理此项目的权限及内容，不授予组织标签字典维护权。'};
+const shown=computed(()=>{const query=search.value.toLocaleLowerCase();return (state.value?.tokens??[]).filter(token=>(filter.value!=='issued'||token.issuedBy===state.value?.identity.id)&&(filter.value!=='own'||token.actorId===state.value?.identity.id)&&(!query||[token.name,token.scope?token.scope.namespace+'/'+token.scope.repo:'',token.issuedByName,token.actorId,token.fingerprint].join(' ').toLocaleLowerCase().includes(query)));});
+const date=(value?:string)=>value?new Date(value).toLocaleString():'未记录';
+const tokenScope=(token:AccessTokenSummary)=>token.globalRole==='administrator'?'实例管理员 · 所有项目':token.globalRole==='auditor'?'全局操作日志只读':token.scope?token.scope.namespace+'/'+token.scope.repo:'范围未确定 · 不授予项目权限';
+const statusName=(token:AccessTokenSummary)=>({active:'有效',expired:'已到期',revoked:'已撤销'}[token.status]);
+const availablePeople=computed(()=>scope.value==='instance'?state.value?.instanceIdentities??[]:state.value?.identities??[]);
+const canIssue=computed(()=>recipient.value==='existing'?availablePeople.value.some(person=>person.id===existingActorId.value):!!name.value.trim());
+const expiry=()=>new Date(Date.now()+Number(expiryDays.value)*86400000).toISOString();
+async function load(){const current=++generation;loading.value=true;error.value='';try{const value=await request<AccessManagementState>(props.ownOnly?'/me/access-tokens':'/access-management');if(current!==generation)return;state.value=value;if(!value.capabilities.canManageInstance)scope.value='project';if(!project.value&&value.repositories?.length)project.value=value.repositories[0]!.namespace+'/'+value.repositories[0]!.name;}catch(cause){if(current===generation){error.value=(cause as Error).message;if(cause instanceof ApiError&&[401,403].includes(cause.status))state.value=undefined;}}finally{if(current===generation)loading.value=false;}}
+async function issue(){
+  if(!state.value||busy.value||!canIssue.value)return;const context=credentialContext(app.status?.identity);
+  if(scope.value==='instance'&&!await app.confirmAction((recipient.value==='existing'?'将为已有实例人员重新发放同角色令牌，保留原人员身份与私有输入；原撤销令牌不会恢复。\n\n':'')+(globalRole.value==='administrator'?'实例管理员可以管理所有项目、人员和权限，包括未来创建的项目。请确认此人确实需要此权限。':'审计人员可以查看全局项目操作和权限变更日志；不会因此获得样本或项目读取权限。'),{title:'确认实例权限范围',confirmLabel:'确认发放'}))return;
+  if(context!==credentialContext(app.status?.identity))return;
+  busy.value=true;error.value='';issuedToken.value='';copied.value=false;
+  try{const person=recipient.value==='existing'?{existingActorId:existingActorId.value}:{name:name.value.trim()},payload=scope.value==='instance'?{scope:'instance',...person,globalRole:globalRole.value,expiresAt:expiry()}:{scope:'project',...person,repository:{namespace:project.value.split('/')[0],repo:project.value.split('/')[1]},role:role.value,expiresAt:expiry()};const result=await post<{token:string}>('/access-management/grants',payload);if(context!==credentialContext(app.status?.identity))return;issuedToken.value=result.token;name.value='';await load();if(context===credentialContext(app.status?.identity))app.notify('令牌已创建；只在本页显示一次，请自行安全交给对应人员。');}
+  catch(cause){if(context===credentialContext(app.status?.identity))error.value=(cause as Error).message;}
+  finally{if(context===credentialContext(app.status?.identity))busy.value=false;}
+}
+async function revoke(token:AccessTokenSummary){const context=credentialContext(app.status?.identity);if(!await app.confirmAction(`撤销“${token.name}”的令牌（${token.fingerprint}）后，使用它的现有会话也会失效。已保存的数据和标注意见仍保留。`,{title:'撤销访问令牌',confirmLabel:'撤销令牌'}))return;if(context!==credentialContext(app.status?.identity))return;busy.value=true;error.value='';try{await post('/me/access-tokens/'+token.id+'/revoke');if(context!==credentialContext(app.status?.identity))return;if(token.id===app.status?.identity?.credentialId)await app.refreshStatus();if(context!==credentialContext(app.status?.identity))return;await load();if(context===credentialContext(app.status?.identity))app.notify('访问令牌已撤销。');}catch(cause){if(context===credentialContext(app.status?.identity))error.value=(cause as Error).message;}finally{if(context===credentialContext(app.status?.identity))busy.value=false;}}
+async function rotate(token:AccessTokenSummary){
+  const context=credentialContext(app.status?.identity);if(!await app.confirmAction(`将为“${token.name}”生成新令牌并立即撤销旧令牌，人员身份及已保存意见保持不变。新令牌到期时间为${expiryDays.value}天后。`,{title:'轮换访问令牌',confirmLabel:'生成新令牌并撤销旧令牌'}))return;if(context!==credentialContext(app.status?.identity))return;
+  busy.value=true;error.value='';issuedToken.value='';copied.value=false;let acceptedContext=context;
+  try{const value=await rotateForCurrentContext({current:()=>app.status?.identity,credentialId:token.id,rotate:()=>post<{token:string;credential:{id:string;actorId:string}}>('/me/access-tokens/'+token.id+'/rotate',{expiresAt:expiry()}),login:value=>app.login(value)});if(!value)return;acceptedContext=credentialContext(app.status?.identity);issuedToken.value=value;await load();if(acceptedContext===credentialContext(app.status?.identity))app.notify('新令牌只显示一次，旧令牌已失效。');}
+  catch(cause){if(acceptedContext===credentialContext(app.status?.identity))error.value=(cause as Error).message;}
+  finally{if(acceptedContext===credentialContext(app.status?.identity))busy.value=false;}
+}
+async function copy(){try{await navigator.clipboard.writeText(issuedToken.value);copied.value=true;}catch{error.value='无法自动复制，请手动选中一次性令牌并复制。';}}
+async function leave(){return !issuedToken.value||await app.confirmAction('一次性令牌仍在本页。离开后无法再次查看；请确认已经安全保存。',{title:'离开令牌页面',confirmLabel:'我已保存，离开'});}
+watch(scope,()=>{existingActorId.value='';});
+watch(()=>[scope.value,existingActorId.value,project.value,recipient.value],()=>{if(recipient.value!=='existing')return;if(scope.value==='instance'){const current=state.value?.instanceIdentities?.find(person=>person.id===existingActorId.value);if(current)globalRole.value=current.globalRole;return;}const current=state.value?.tokens.find(token=>token.actorId===existingActorId.value&&token.scope?.namespace+'/'+token.scope?.repo===project.value&&token.projectRole);if(current?.projectRole)role.value=current.projectRole;});
+onBeforeRouteLeave(leave);onBeforeUnmount(()=>{generation++;issuedToken.value='';});
+watch(()=>[props.ownOnly,credentialContext(app.status?.identity)],()=>{++generation;state.value=undefined;issuedToken.value='';copied.value=false;error.value='';busy.value=false;name.value='';existingActorId.value='';project.value='';recipient.value='new';scope.value='project';role.value='annotator';globalRole.value='auditor';search.value='';filter.value='all';void load();},{immediate:true,flush:'sync'});
+</script>
+<template>
+  <section class="access-management" aria-label="访问与令牌管理">
+    <header class="management-heading"><div><span class="eyebrow">WORKSPACE ACCESS</span><h1>{{ownOnly?'我的访问令牌':'访问管理'}}</h1><p>{{ownOnly?'查看当前身份使用的令牌，以及由你发放给其他人员的令牌。':'按项目角色授权，或指定实例管理员和全局日志审计人员。'}}</p></div><button class="btn" :disabled="loading||busy" @click="load"><RefreshCw :size="15"/>刷新</button></header>
+    <nav class="management-links" aria-label="身份管理页面"><RouterLink to="/account/tokens">我的令牌</RouterLink><RouterLink v-if="state?.capabilities.canManageAccess" to="/access">访问管理</RouterLink><RouterLink v-if="state?.capabilities.canReadAudit" to="/activity">操作日志</RouterLink></nav>
+    <p v-if="error" class="error-state" role="alert">{{error}} <button class="btn btn-ghost" @click="load">重新读取</button></p>
+    <p v-if="loading&&!state" class="management-loading" role="status"><LoaderCircle class="spin" :size="18"/>正在核对身份、项目权限和已发放令牌…</p>
+    <template v-if="state">
+      <p v-if="state.capabilities.localOwnerEnabled" class="notice"><ShieldCheck :size="16"/>当前启用本机所有者兼容模式。团队部署应配置独立身份；令牌不会替代上游网络隔离。</p>
+      <form v-if="!ownOnly&&state.capabilities.canManageAccess" class="management-panel access-issue-form" @submit.prevent="issue">
+        <header><KeyRound :size="20"/><div><h2>发放访问令牌</h2><p>填写对应使用者；令牌只显示一次，由你自行通过安全渠道交付。</p></div></header>
+        <div class="management-form-grid"><label v-if="recipient==='new'">人员显示名称<input v-model="name" required maxlength="120" :disabled="busy" placeholder="例如 标注员张三"/></label><label v-else>{{scope==='instance'?'已有实例人员':'已有人员'}}<select v-model="existingActorId" :disabled="busy" required><option value="">{{scope==='instance'?'请选择已有实例人员':'请选择已有人员'}}</option><option v-for="person in availablePeople" :key="person.id" :value="person.id">{{person.name}} · {{person.id.slice(0,8)}}…</option></select></label><label>授权范围<select v-model="scope" :disabled="busy"><option value="project">指定项目</option><option v-if="state.capabilities.canManageInstance" value="instance">实例级权限</option></select></label><label>有效期<select v-model="expiryDays" :disabled="busy"><option value="7">7天</option><option value="30">30天</option><option value="90">90天</option><option value="180">180天</option><option value="365">365天</option></select></label></div>
+        <label class="management-recipient">授权人员<select v-model="recipient" :disabled="busy"><option value="new">新建独立人员并发放令牌</option><option value="existing">{{scope==='instance'?'为已有实例人员重新发放同角色令牌':'为已有人员发放此项目的令牌'}}</option></select></label>
+        <div v-if="scope==='project'" class="management-form-grid"><label>数据集项目<select v-model="project" :disabled="busy" required><option v-for="repository in state.repositories" :key="repository.namespace+'/'+repository.name" :value="repository.namespace+'/'+repository.name">{{repository.displayName||repository.name}} · {{repository.namespace}}/{{repository.name}}</option></select></label><label>项目角色<select v-model="role" :disabled="busy"><option v-for="item in roles" :key="item.id" :value="item.id">{{item.name}}</option></select></label></div>
+        <label v-else>实例角色<select v-model="globalRole" :disabled="busy||recipient==='existing'"><option value="auditor">操作日志审计员 · 只读</option><option value="administrator">实例管理员 · 所有项目和人员</option></select></label>
+        <p v-if="scope==='project'" class="management-help">此令牌只在指定项目生效。同一人员可分别持有不同项目的令牌，人员身份及历史意见保持一致；项目角色仍可在项目成员中维护；若已有成员，将按下方角色更新，请核对。</p><p v-else-if="recipient==='existing'" class="management-help">保留已有实例人员的原角色和稳定身份，可取回其原有私有草稿与界面输入。重发不会恢复旧令牌，也不会把项目人员升级为实例管理员。</p><p class="management-help">{{scope==='project'?roleHelp[role]:globalRole==='administrator'?'此权限覆盖整个实例及未来项目，应仅发给确实需要管理权限的人员。':'仅允许读取全局宏观操作日志，不授予项目或样本访问权。'}}</p>
+        <footer><span>项目独立能力可继续在项目设置 → 用户与协作者维护。</span><button class="btn btn-primary" :disabled="busy||!canIssue||scope==='project'&&!project"><LoaderCircle v-if="busy" class="spin" :size="15"/><Plus v-else :size="15"/>创建令牌</button></footer>
+      </form>
+      <section v-if="issuedToken" class="management-panel management-token" role="status" aria-label="新创建的一次性令牌"><h2>访问令牌仅显示这一次</h2><p>服务只保存哈希，列表不提供任何人的原始令牌。请勿把令牌放入截图、日志或代码。</p><textarea :value="issuedToken" readonly rows="3" spellcheck="false" aria-label="一次性访问令牌"/><div><button class="btn" @click="copy"><Copy :size="15"/>{{copied?'已复制':'复制新令牌'}}</button><button class="btn btn-ghost" @click="issuedToken=''">我已保存，关闭</button></div></section>
+      <section class="management-panel"><header class="management-list-heading"><div><h2>{{ownOnly?'当前身份与我发放的令牌':'令牌目录'}}</h2><p>仅展示摘要和授权范围。撤销不会删除人员的历史标注或提交记录。</p></div><strong>{{shown.length}} 项</strong></header><div class="management-filters"><label>搜索令牌<input v-model="search" placeholder="人员、项目或令牌摘要…"/></label><label>查看范围<select v-model="filter"><option value="all">全部可见</option><option value="issued">由我发放</option><option value="own">当前身份</option></select></label><label>轮换后的有效期<select v-model="expiryDays"><option value="7">7天</option><option value="30">30天</option><option value="90">90天</option><option value="180">180天</option><option value="365">365天</option></select></label></div>
+        <div v-if="shown.length" class="management-table-scroll"><table><thead><tr><th>人员 / 令牌摘要</th><th>授权范围</th><th>状态</th><th>发放时间 / 到期</th><th>授权发放者</th><th>操作</th></tr></thead><tbody><tr v-for="token in shown" :key="token.id"><td><strong>{{token.name}}</strong><small class="mono">{{token.fingerprint}}…</small><small :title="token.actorId">稳定人员身份 {{token.actorId.slice(0,8)}}…</small></td><td>{{tokenScope(token)}}<small v-if="token.scope">项目角色：{{roles.find(item=>item.id===token.projectRole)?.name||'无当前项目角色'}}{{token.customCapabilities?' · 已配置独立能力':''}}</small><RouterLink v-if="token.scope" :to="'/repos/'+encodeURIComponent(token.scope.namespace)+'/'+encodeURIComponent(token.scope.repo)+'/settings?section=access'">查看项目角色与独立能力</RouterLink></td><td><span class="management-status" :class="token.status">{{statusName(token)}}</span><small v-if="token.revokedAt">{{date(token.revokedAt)}}</small></td><td>{{date(token.createdAt)}}<small>到期 {{date(token.expiresAt)}}</small></td><td>{{token.issuedByName||'历史发放者未记录'}}</td><td><div class="management-row-actions"><button v-if="token.canRotate" class="btn btn-ghost" :disabled="busy" @click="rotate(token)">轮换</button><button v-if="token.canRevoke" class="btn btn-ghost management-danger" :disabled="busy" @click="revoke(token)">撤销</button><span v-if="!token.canRotate&&!token.canRevoke" class="muted">—</span></div></td></tr></tbody></table></div><p v-else class="management-empty">{{search?'没有匹配的令牌。':'还没有可见令牌。实例引导凭据由部署环境管理，不在这里展示或复制。'}}</p>
+      </section>
+    </template>
+  </section>
+</template>

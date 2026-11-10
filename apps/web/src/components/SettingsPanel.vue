@@ -91,6 +91,7 @@ watch(() => props.base, load, { immediate: true });
       <AccessPanel v-show="activeSection==='access'" :base="base" :enabled="writable" @changed="accessChanged" />
   <SchemaBindingPanel v-if="activeSection==='schema'" :base="base" :branch="branch" @bound="labelsChanged"/>
       <DatasetConfigurationPanel v-if="activeSection==='dataset'" :base="base" :branch="branch" @configured="emit('changed')"/>
+
       <SampleFieldsPanel v-if="activeSection==='fields'" :base="base" :branch="branch" @saved="emit('changed')" @configure-dataset="selectSection('dataset')"/>
       </div>
     </div>

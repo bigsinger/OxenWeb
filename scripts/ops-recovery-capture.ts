@@ -1,0 +1,7 @@
+/** Run after BFF is drained/stopped but before the managed Oxen server is stopped. */
+import path from 'node:path';
+import {loadConfig,projectRoot} from '../apps/server/src/config.js';
+import {durableWriteJson} from '../apps/server/src/durable-store.js';
+import {captureRecoveryInventory,recoveryInventorySummary,recoveryProvider} from './recovery-inventory.js';
+for(const filename of [path.join(projectRoot,'.env'),path.join(projectRoot,'infra/oxen/local.env')])try{process.loadEnvFile(filename);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+try{const config=loadConfig();if(config.demo)throw new Error('Official live mode is required');const host=['0.0.0.0','::'].includes(config.host)?'127.0.0.1':config.host.includes(':')?'['+config.host+']':config.host;let responding=false;try{await fetch('http://'+host+':'+config.port+'/api/status',{signal:AbortSignal.timeout(1000)});responding=true;}catch{}if(responding)throw new Error('Stop or drain and stop the BFF before capturing a cold-backup inventory');const inventory=await captureRecoveryInventory(await recoveryProvider(config)),destination=path.join(path.dirname(config.demoFile),'operations/backup-read-inventory.json');await durableWriteJson(destination,inventory);console.log(JSON.stringify({...recoveryInventorySummary(inventory),captured:true,bodiesLogged:false,requiresStoppedBff:true}));}catch(error){console.error('Inventory capture failed: '+(error instanceof Error?error.name:'UNKNOWN'));process.exitCode=1;}

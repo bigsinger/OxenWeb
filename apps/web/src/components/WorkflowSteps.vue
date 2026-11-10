@@ -1,0 +1,5 @@
+<script setup lang="ts">
+defineProps<{steps:string[];current:number;label:string}>();
+</script>
+<template><nav class="workflow-steps" :aria-label="label"><ol><li v-for="(step,index) in steps" :key="step" :class="{current:index===current,complete:index<current}" :aria-current="index===current?'step':undefined"><span aria-hidden="true">{{index<current?'✓':index+1}}</span>{{step}}</li></ol></nav></template>
+<style scoped>.workflow-steps{padding:12px 0;margin-bottom:12px}.workflow-steps ol{display:flex;gap:12px;flex-wrap:wrap;list-style:none;padding:0;margin:0}.workflow-steps li{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;line-height:1.8}.workflow-steps li>span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:1px solid var(--line)}.workflow-steps .current{color:var(--text);font-weight:600}.workflow-steps .current>span{border-color:var(--primary);background:var(--primary-soft);color:var(--accent)}.workflow-steps .complete>span{color:var(--success)}</style>

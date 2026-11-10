@@ -11,7 +11,7 @@ function fixture():{state:DatasetFieldsState;checkpoint:SampleFieldFormCheckpoin
   return {state,checkpoint};
 }
 test('unfinished options, invalid width, explicit blanks and boolean/null flags survive local checkpoint serialization',()=>{
-  const {checkpoint,state}=fixture(),draft=checkpoint.drafts[0]!;setSampleFieldControl(draft,'enum');draft.options=[{type:'number',text:'-'},{type:'string',text:''},{type:'boolean',text:'false'}];draft.optionType='auto';draft.displayName='';draft.displayNameSet=true;draft.nullable=false;draft.nullableSet=true;draft.required=true;draft.requiredSet=true;draft.widthMode='fixed';draft.widthValue='12.';
+  const {checkpoint,state}=fixture(),draft=checkpoint.drafts[0]!;setSampleFieldControl(draft,'enum');draft.options=[{type:'number',text:'-'},{type:'string',text:''},{type:'boolean',text:'false'}];draft.optionType='auto';draft.displayName='';draft.displayNameSet=true;draft.nullable=false;draft.nullableSet=true;draft.required=true;draft.requiredSet=true;
   assert.throws(()=>sampleFieldConfiguration(checkpoint.drafts),'Half-complete forms are not valid committed fields');
   const roundtrip=parseSampleFieldCheckpoint(JSON.parse(JSON.stringify(checkpoint)));assert.deepEqual(roundtrip,checkpoint);
   const recovered=restoreSampleFieldCheckpoint(roundtrip,state);assert.deepEqual(recovered.drafts[0],draft);assert.equal(roundtrip.selected,'title');assert.equal(roundtrip.search,'title');assert.equal(roundtrip.newId,'unfinished_new_field');assert.equal(roundtrip.message,'保留配置');

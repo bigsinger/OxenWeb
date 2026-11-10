@@ -23,10 +23,10 @@ wsl --list --verbose
 
 ## 取得源码与构建
 
-源码仓库为 `bigsinger/OxenWeb`；本版使用 `v0.1.0` tag，提交与验收结果以发行说明为准。
+源码仓库为 `bigsinger/OxenWeb`；最新改造在 `main`，应用版本仍为0.1.0。`v0.1.0` tag仅代表首次交付，不含之后的改造。当前行为和验收以[R21记录](implementation-r21.md)为准。
 
 ```powershell
-git clone --branch v0.1.0 https://github.com/bigsinger/OxenWeb.git oxen-web
+git clone --branch main https://github.com/bigsinger/OxenWeb.git oxen-web
 cd oxen-web
 git switch -c codex/development
 npm ci
@@ -60,6 +60,10 @@ npm start
 | 可选Vite开发页面 | <http://127.0.0.1:5173>，需另运行`npm run dev` |
 
 `seed`生成的`infra/oxen/local.env`会在BFF启动时自动加载。需要修改配置时，将[.env.example](../.env.example)复制为项目根`.env`后编辑；已有进程环境变量优先，其次根`.env`，再使用自动生成的本地配置。两个env文件均只在本机使用，不提交源码或放入截图。
+
+R21：首次使用团队权限前，管理员须在可信维护入口显式初始化`source-access-markers.json`。Live缺少此文件时，所有项目源数据保守按受限主库处理；不要用删除文件或盲写空列表来解除已有保护。新安装核对为空环境后可初始化空列表，已有实例须先保留原受限项目。Demo只对合成控制目录初始化。具体步骤见[运行手册](operations-runbook.md)及[源保护与当前恢复边界](r21-source-protection-and-recovery.md)。
+
+停止BFF后先执行`npx tsx scripts/ops-source-access-init.ts`查看只读计划。确认新空环境后，使用`npx tsx scripts/ops-source-access-init.ts --execute --initialize-empty`；已有保护用`--execute --retain namespace/repository`，可重复`--retain`。活动BFF租约存在时工具拒绝执行。保护文件遗失应恢复同代备份，不能直接初始化空策略。
 
 Windows的server活跃数据放在WSL原生ext4下的`<WSL-HOME>/.local/share/oxen-web/<project-id>/data`，指针保存在受忽略的`infra/oxen/run/`。不要随意移动checkout、手改指针或用Windows挂载盘上的旧副本覆盖它。路径由脚本计算，不依赖原开发机器用户名或盘符。详细的迁移、备份与平台限制见[本地服务说明](../infra/oxen/README.md)。
 

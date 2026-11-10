@@ -7,13 +7,25 @@ export interface DatasetFieldMetadata {
   nullable?: boolean; required?: boolean;
   enum?: DatasetFieldOption[];
   items?: { type?: 'string' | 'number' | 'integer' | 'boolean'; enum?: DatasetFieldOption[] };
-  /** Pure Web presentation. Omit to let the table choose its width automatically. */
-  width?: { mode: 'fixed' | 'weight'; value: number };
+  /** Historical metadata only; R17 uses the editor's personal pixel layout and has no weight/auto-fit controls. */
+  width?: { mode: 'fixed'; value: number } | { mode: 'weight'; value: number; /** Auto-fit floor/cap in pixels; manual weights may omit both. */ min?: number; max?: number };
+  /** Zero-based source-column display order; omitted fields keep their relative source order. */
+  order?: number;
+  /** Typed option-key -> #RRGGBB. Presentation only; keys come from fieldOptionKey. */
+  optionColors?: Record<string,string>;
+  /** Typed option-key -> human-readable choice name. Presentation only. */
+  optionLabels?: Record<string,string>;
+  /** Include this entire top-level source field in formal Release data. Defaults to true. */
+  export?: boolean;
+  /** Show this source column in the data-editor table. Defaults to true; no effect on export or access. */
+  visible?: boolean;
+  /** Pinned Web catalog origin. Retiring a catalog field never removes this project snapshot. */
+  globalField?: { id: string; revision: number };
 }
-/** Width-only metadata never changes validation, private-draft or review fingerprints. */
+/** Display/delivery options never change source validation, private-draft or annotation-review fingerprints. */
 export function semanticDatasetFields(fields: Readonly<Record<string, DatasetFieldMetadata>> = {}): Record<string, DatasetFieldMetadata> {
   return Object.fromEntries(Object.entries(fields).flatMap(([id, field]) => {
-    const { width: _width, ...rules } = field;
+    const { width: _width, order: _order, optionColors: _colors, optionLabels: _optionLabels, export: _export, visible: _visible, globalField: _origin, ...rules } = field;
     return Object.keys(rules).length ? [[id, rules]] : [];
   }));
 }

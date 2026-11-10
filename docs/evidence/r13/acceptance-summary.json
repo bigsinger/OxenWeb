@@ -1,0 +1,120 @@
+{
+  "date": "2026-11-09",
+  "scope": "Local TypeScript Web/BFF only; field table visibility, internal horizontal scrolling, human label cell editing",
+  "oxenCoreModified": false,
+  "fixedContractChanged": false,
+  "realDatasetBodiesRead": false,
+  "realDatasetAssignmentsWritten": false,
+  "realSplitProposalApproved": false,
+  "automated": {
+    "tests": 450,
+    "passed": 443,
+    "failed": 0,
+    "skipped": 7,
+    "cancelled": 0,
+    "durationMs": 79719.4086
+  },
+  "stagedBuildPassed": true,
+  "contractGenerationPassed": true,
+  "contractDiffEmpty": true,
+  "diffCheckPassed": true,
+  "native": {
+    "official": "0.67.0",
+    "passed": true,
+    "completedAt": "2026-11-09T04:08:20.491Z",
+    "syntheticRows": 8,
+    "isolatedPort": 3008,
+    "fieldCommit": "55c31b08115444dc0392c09876001fb8",
+    "releaseCommit": "55c31b08115444dc0392c09876001fb8",
+    "sourceSha256": "ab4d396293d5399ce972de96f46274304a0ac7f9234e1f3ec68e528b38fb6efe",
+    "sourceAndStableIdsRetained": true,
+    "tableHiddenFieldAvailableInSearchAndSource": true,
+    "hiddenTableExportEnabledRetained": true,
+    "shownTableExportDisabledExcluded": true,
+    "verifiedReviewsSurvivedPresentationChange": true,
+    "staleCasRejected": true,
+    "views": {
+      "gold": 2,
+      "regression": 2,
+      "nonhiddenAll": 4,
+      "hidden": 2
+    },
+    "zipExecuted": false,
+    "stoppedAfterAcceptance": true
+  },
+  "browser": {
+    "syntheticQa": {
+      "bffPort": 3012,
+      "vitePort": 5174,
+      "rows": 12,
+      "typedLabelControls": [
+        "single",
+        "multi",
+        "text"
+      ],
+      "privateSaveAndReloadPreserved": true,
+      "explicitPresentationRebasePreserved": true,
+      "showAllCannotOverrideProjectHidden": true,
+      "hiddenFieldInDetail": true,
+      "uniformLabelCommit": {
+        "pendingRows": 0,
+        "sessionCommittedRows": 1
+      },
+      "desktop": {
+        "width": 1280,
+        "height": 720,
+        "tableClientWidth": 1220,
+        "tableScrollWidth": 3962,
+        "documentOverflow": false
+      },
+      "narrow": {
+        "width": 390,
+        "height": 844,
+        "tableClientWidth": 336,
+        "tableScrollWidth": 3665,
+        "documentClientWidth": 380,
+        "documentScrollWidth": 380
+      },
+      "viewportReset": true,
+      "consoleWarnOrErrorAfterReload": 0,
+      "qaProcessesStopped": true
+    },
+    "production": {
+      "port": 3001,
+      "repository": "local/r8-project-acceptance-mw7tdcfk",
+      "syntheticOnly": true,
+      "readOnly": true,
+      "head": "d3ec343ab4cfc2f12d0331dc14d892d4",
+      "displayAndExportDefaultChecked": true,
+      "labelEditButtons": 3,
+      "tableClientWidth": 1230,
+      "tableScrollWidth": 1686,
+      "documentClientWidth": 1270,
+      "documentScrollWidth": 1270,
+      "consoleWarnOrError": 0
+    },
+    "newBrowserDownloadsAttempted": false,
+    "previousManualDownloadHandoffRetained": true
+  },
+  "deployment": {
+    "passed": true,
+    "startedAt": "2026-11-09T04:17:47.344Z",
+    "completedAt": "2026-11-09T04:17:48.661Z",
+    "upstreamLeftRunning": true,
+    "realDatasetWrites": false,
+    "builds": [
+      {
+        "name": "server",
+        "sha256": "3d9bb3a6f899fd8fd81fadd79d307b17d64703a568adc2a4c36470fddb6413b8"
+      },
+      {
+        "name": "web",
+        "sha256": "2a8a4e3b88de9365afef66f6be2b273a51dcefab35c08b8c60ac8b4f5689cd19"
+      }
+    ],
+    "fullColdBackupRepeated": false,
+    "freshR13RestoreClaimed": false,
+    "gitCommitCreated": false,
+    "gitPushPerformed": false
+  }
+}

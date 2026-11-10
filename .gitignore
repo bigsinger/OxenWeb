@@ -3,6 +3,7 @@ dist/
 .env
 .env.*.local
 .data/
+.backups/
 coverage/
 *.log
 .qa/
@@ -12,3 +13,35 @@ docs/evidence/*
 !docs/evidence/README.md
 !docs/evidence/r7-layout-drafts/
 !docs/evidence/r8-project-management/
+!docs/evidence/r9-grid/
+!docs/evidence/r10/
+!docs/evidence/r11/
+!docs/evidence/r12/
+!docs/evidence/r13/
+!docs/evidence/r15/
+!docs/evidence/r16/
+!docs/evidence/r17/
+!docs/evidence/r18/
+!docs/evidence/r19/
+!docs/evidence/r20/
+
+# Only explicitly reviewed screenshots are included in public commits.
+docs/evidence/**/*.png
+!docs/evidence/r10/access-management.png
+!docs/evidence/r10/final-global-audit.png
+!docs/evidence/r10/credential-context-cleared.png
+!docs/evidence/r12/release-sharing.png
+!docs/evidence/r10/global-audit.png
+!docs/evidence/r10/final-local-service.png
+!docs/evidence/r11/download-gate-awaiting-user.png
+!docs/evidence/r18/production-property-panel.png
+!docs/evidence/r19/holdout-count-hash.png
+!docs/evidence/r19/release-published-desktop.png
+!docs/evidence/r20/release-published-desktop.png
+!docs/evidence/r20/release-form-desktop.png
+!docs/evidence/r21/
+!docs/evidence/r21/*.png
+
+# Dataset-specific analysis outputs stay on this workstation.
+docs/research/real-dataset-*
+docs/proposals/real-dataset-splits-r13.md

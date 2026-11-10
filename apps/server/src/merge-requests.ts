@@ -1,5 +1,6 @@
+import {durableWriteJson} from './durable-store.js';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -49,9 +50,7 @@ export class MergeRequestStore {
     const next = this.chain.then(async () => {
       const records = structuredClone(this.records), result = await operation(records);
       await mkdir(path.dirname(this.filename), { recursive: true });
-      const temp = `${this.filename}.${randomUUID()}.tmp`;
-      await writeFile(temp, JSON.stringify({ version: 1, requests: records }, null, 2), { mode: 0o600 });
-      await rename(temp, this.filename); this.records = records;
+      await durableWriteJson(this.filename,{version:1,requests:records}); this.records = records;
       return structuredClone(result);
     });
     this.chain = next.then(() => {}, () => {}); return next;

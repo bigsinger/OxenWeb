@@ -77,6 +77,8 @@ for(const kind of ['jsonl','zip'] as const)test(`${kind.toUpperCase()} import re
   const {provider,start}=await fixture(t),app=await start(),repo='catalog-failed-'+kind,key={namespace:'local',repo};
   const content=Buffer.from('{"id":"one","text":"Synthetic failed import"}\n'),write=provider.writeWorkspace.bind(provider),begin=Date.now();
   provider.writeWorkspace=async(repository,workspace,filename,bytes)=>{if(repository.repo===repo&&filename.endsWith('.jsonl'))throw new ApiError(409,'SYNTHETIC_WRITE_FAILURE','Synthetic failure after repository creation');return write(repository,workspace,filename,bytes);};
+  // Atomic providers stage a validated batch; inject the same failure at that real boundary.
+  const batch=provider.writeWorkspaceBatch.bind(provider);provider.writeWorkspaceBatch=async(repository,workspace,files)=>{if(repository.repo===repo&&files.some(file=>file.path.endsWith('.jsonl')))throw new ApiError(409,'SYNTHETIC_WRITE_FAILURE','Synthetic failure after repository creation');return batch(repository,workspace,files);};
   if(kind==='jsonl'){
     const response=await app.inject({method:'POST',url:'/api/import/jsonl',...multipart('samples.jsonl',content,{...key,branch:'main',path:'data/samples.jsonl',createRepository:'true'})});assert.equal(response.statusCode,409,response.body);assert.equal(response.json().error.code,'SYNTHETIC_WRITE_FAILURE');
   }else{

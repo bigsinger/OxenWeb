@@ -1,6 +1,49 @@
 {
   "snapshotDate": "2026-11-08",
   "timezone": "Asia/Shanghai",
+  "currentLocal": {
+    "revision": "R21",
+    "date": "2026-11-10",
+    "classification": "Local extensions only; no new SaaS observations",
+    "userGuide": "../../user-guide.md",
+    "implementation": "../../implementation-r21.md",
+    "implementationRecordStatus": "completed",
+    "publishingPolicy": "Only the latest published complete dataset per project remains; old release records, assets and share links are deleted. Source branches and commit history remain. No old publishing compatibility, views or templates.",
+    "components": [
+      "apps/web/src/components/ReleasesPanel.vue",
+      "apps/server/src/releases.ts",
+      "apps/server/src/release-retention.ts",
+      "apps/server/src/source-access-markers.ts"
+    ],
+    "copiedRootRehearsal": {
+      "passed": true,
+      "removedRecords": 5,
+      "removedFiles": 9,
+      "removedBytes": 15446673,
+      "scope": "Isolated copy of the managed release root"
+    },
+    "deploymentAcceptance": {
+      "startupPassed": true,
+      "removedReleaseRecords": 2,
+      "removedOldSnapshotRecords": 3,
+      "removedFiles": 9,
+      "removedBytes": 15446673,
+      "removedShares": 0,
+      "activeRecordsAfter": 0,
+      "pendingCleanupAfter": 0,
+      "oldArtifactFoldersAbsent": true,
+      "currentFormatPublicationsBefore": 0,
+      "sourceDigestComparison": "All four main commits, canonical bytes and SHA256, and private-draft SHA256 unchanged",
+      "publicEvidenceSummary": "../../evidence/r21/verification.json"
+    },
+    "officialNativeAcceptance": {
+      "passed": true,
+      "version": "0.67.0",
+      "isolatedPort": 3008
+    },
+    "browserAcceptance": {"passed": true, "syntheticOnly": true, "narrowWidth": 390, "publishReplacement": true, "duplicateVersionPreservesInput": true, "downloadAttempted": false},
+    "r11DownloadHandoff": "Superseded by the user's delete-all-old-publications requirement; browser download was not completed and is not marked passed. Historical approval-block records remain."
+  },
   "scope": "Original data management and collaboration, JSONL, local custom labels",
   "referenceProject": "https://www.oxen.ai/bigsinger/oxen-web-acceptance-20261108",
   "credentialsStored": false,
@@ -150,5 +193,29 @@
         "apps/web/src/components/AccessPanel.vue"
       ]
     }
-  ]
+  ],
+  "r12Implementation": "../../implementation-r12.md",
+  "r12LocalEvidenceDirectory": "../../evidence/r12/",
+  "r12Scope": "Local extension: restricted private master, evaluation groups, fixed tiered releases; no new SaaS observation",
+  "r13Implementation": "../../implementation-r13.md",
+  "r13LocalEvidenceDirectory": "../../evidence/r13/",
+  "r13Scope": "Local extension: independent table field visibility, internal horizontal scrolling, typed human-label cell editing; real dataset split proposal pending confirmation; no new SaaS observation",
+  "r15Implementation": "../../implementation-r15.md",
+  "r15LocalEvidenceDirectory": "../../evidence/r15/",
+  "r15Scope": "Local frontend refinement: human labels after visible id; auto-width uses current displayed-field selections only; no new SaaS observation or real evaluation assignments",
+  "r16Implementation": "../../implementation-r16.md",
+  "r16LocalEvidenceDirectory": "../../evidence/r16/",
+  "r16Scope": "Local extension: global four-dimensional field governance, project field protection, bounded auto-width, versioned custom field deletion, fixed four-dimensional delivery memberships; no new SaaS observation",
+  "r17Implementation": "../../implementation-r17.md",
+  "r17LocalEvidenceDirectory": "../../evidence/r17/",
+  "r17Scope": "Local extension: personal draggable/resizable table layout, precise cross-page bulk drafts, read-only four-dimensional real-data proposals; retired auto-width and weight UI",
+  "r18Implementation": "../../implementation-r18.md",
+  "r18LocalEvidenceDirectory": "../../evidence/r18/",
+  "r18Scope": "Local extension: admin-only dynamic global field CRUD/history, property-value sample drawer, four independent delivery ZIPs, safe shared work snapshots and restricted-master source gate; no new SaaS observation",
+  "r19LocalImplementation": "../../implementation-r19.md",
+  "r19PublishingUi": "../../r19-publishing-ui.md",
+  "r19EvidenceDirectory": "../../evidence/r19/",
+  "r20LocalImplementation": "../../implementation-r20.md",
+  "r20PublishingUi": "../../r20-simple-publishing-ui.md",
+  "r20EvidenceDirectory": "../../evidence/r20/"
 }

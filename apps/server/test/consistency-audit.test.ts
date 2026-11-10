@@ -9,6 +9,7 @@ import { loadConfig, projectRoot } from '../src/config.js';
 import { ApiError } from '../src/errors.js';
 import type { MergeOptions } from '../src/provider.js';
 import { parseLocalBranchHead } from '../src/managed-cli.js';
+import { SourceAccessMarkers } from '../src/source-access-markers.js';
 
 const key = { namespace: 'team', repo: 'data' }, base = '/api/repos/team/data';
 const before = 'a'.repeat(32), after = 'b'.repeat(32);
@@ -137,6 +138,8 @@ test('a queued merge cannot silently switch to moved branch heads', async t => {
 
 test('managed CLI push rejects collaborator bypass and private job output requires repository access', async t => {
   const root = path.join(projectRoot, '.data/tests'); await mkdir(root, { recursive: true }); const directory = await mkdtemp(path.join(root, 'queued-access-'));
+  assert.ok(directory.startsWith(root+path.sep),'Managed CLI fixture control must remain in its isolated test root');
+  const sourceMarkers=new SourceAccessMarkers({filename:path.join(directory,'source-access-markers.json')});await sourceMarkers.init();await sourceMarkers.retainRestrictions([]);
   const owner = 'owner-token-for-queued-access-tests', config = loadConfig({ DEMO_MODE: 'false', DEMO_DATA_FILE: path.join(directory, 'state.json'), BFF_TOKEN: owner });
   const demo = new DemoProvider(config.demoFile), app = await createApp(config, demo); t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   const repo = '/api/repos/oxen/visual-search', bearer = (token = owner) => ({ authorization: `Bearer ${token}` });

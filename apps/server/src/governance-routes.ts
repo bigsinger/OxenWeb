@@ -20,16 +20,21 @@ const repo = (value: unknown): RepoKey => z.object({ namespace: z.string().trans
 export class GovernanceWriteGuard {
   private managedPath?: (key: RepoKey, filename: string) => Promise<boolean>;
   private assignment?: (key: RepoKey, identity: RequestIdentity, body: Record<string, unknown>) => Promise<void>;
+  private evaluationMerge?:(key:RepoKey,source:string)=>Promise<void>;
+  private repositoryVisibility?:(key:RepoKey,visibility:string)=>Promise<void>;
   constructor(readonly governance: GovernanceService) {}
   setManagedPathResolver(resolver: (key: RepoKey, filename: string) => Promise<boolean>) { this.managedPath = resolver; }
   setAssignmentAuthorizer(authorizer: (key: RepoKey, identity: RequestIdentity, body: Record<string, unknown>) => Promise<void>) { this.assignment = authorizer; }
+  setEvaluationMergeValidator(validate:(key:RepoKey,source:string)=>Promise<void>){this.evaluationMerge=validate;}
+  setRepositoryVisibilityValidator(validate:(key:RepoKey,visibility:string)=>Promise<void>){this.repositoryVisibility=validate;}
   async assertFileWrite(key: RepoKey, identity: RequestIdentity, filename: string) {
     if (/^\.oxenweb(?:\/|$)/i.test(filename) || /^(data|source|packages)\//i.test(filename) || filename === 'bundle-manifest.json' || await this.managedPath?.(key, filename)) throw new ApiError(403, 'MANAGED_DATA_WORKFLOW_REQUIRED', '此文件属于受保护的规范或数据集，请通过数据编辑、规范绑定或管理流程修改。');
   }
   async assertMergeAllowed(key: RepoKey, identity: RequestIdentity, target: string, source: string) {
     const { access, provider } = this.governance; await access.requireCapability(key, identity, 'merge.execute');
     for (const file of await provider.diff(key, target, source)) {
-      if (repositoryPolicyPath(file.path)) await access.requireCapability(key, identity, 'project.admin');
+      if (repositoryPolicyPath(file.path)) {await access.requireCapability(key, identity, 'project.admin');if(this.repositoryVisibility){let visibility='public';if(file.status!=='removed'){const policy=JSON.parse((await provider.raw(key,source,file.path)).content.toString('utf8'));visibility=typeof policy.visibility==='string'?policy.visibility:'public';}await this.repositoryVisibility(key,visibility);}}
+      if(file.path==='.oxenweb/dataset/evaluation.json'){await access.requireCapability(key,identity,'release.manage');await access.requireCapability(key,identity,'data.edit');}
       if (file.path === SCHEMA_BINDING_PATH) { await access.requireCapability(key, identity, 'schema.bind'); const state = await this.governance.snapshot(key, source);if(!state.binding)throw new ApiError(403,'SCHEMA_BINDING_INVALID','合并包含无效规范绑定。');const layers=state.binding.version===1?[state.binding]:Object.values(state.binding.layers);for(const layer of layers){if(layer.organizationId!==key.namespace)throw new ApiError(403,'SCHEMA_BINDING_INVALID','合并规范未获此项目组织授权。');const published=this.governance.publishedSnapshot(layer.organizationId,layer.templateId,layer.templateVersion);if(published.checksum!==layer.checksum)throw new ApiError(403,'SCHEMA_BINDING_INVALID','合并规范不是已发布固定版本。');} }
       if (file.path === LABEL_PATH) {
         const read = async (reference: string) => { try { return validateLabelDocument(JSON.parse((await provider.raw(key, reference, LABEL_PATH)).content.toString('utf8'))); } catch (error) { if (error instanceof ApiError && error.status === 404) return { columns: [], templateApplications: [] }; throw error; } };
@@ -37,6 +42,7 @@ export class GovernanceWriteGuard {
         if (JSON.stringify(before.columns) !== JSON.stringify(after.columns) || JSON.stringify(before.templateApplications) !== JSON.stringify(after.templateApplications)) await access.requireCapability(key, identity, 'schema.manage');
       }
     }
+    await this.evaluationMerge?.(key,source);
   }
   install(app: FastifyInstance) {
     const { access, provider } = this.governance;

@@ -43,8 +43,10 @@ async function setup(t: { after: (callback: () => Promise<void>) => void }) {
   return { app, provider, jobs, access, store, filename, registrations, advance, create };
 }
 async function finished(jobs: JobQueue, id: string) {
-  for (let i = 0; i < 100; i++) { const job = jobs.get(id); if (['succeeded', 'failed'].includes(job.status)) return job; await new Promise(resolve => setTimeout(resolve, 5)); }
-  throw new Error('The merge job did not finish.');
+  // Parallel suites contend for the same disk; a 500ms polling budget was shorter than a normal synthetic write.
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) { const job = jobs.get(id); if (['succeeded', 'failed'].includes(job.status)) return job; await new Promise(resolve => setTimeout(resolve, 20)); }
+  throw new Error('The merge job did not finish within 15 seconds; last status: ' + jobs.get(id).status);
 }
 
 test('empty, same-branch and no-ahead comparisons cannot create requests', async t => {
