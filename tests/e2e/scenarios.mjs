@@ -22,7 +22,7 @@ const url=(options,path)=>new URL(path,options.origin??'http://127.0.0.1:5173').
 async function observed(api,options,label){const state=await api.snapshot();ensure(!state.includes('[plugin:vite:')&&!state.includes('Internal Server Error'),'no framework error overlay after '+label);await options.onStep?.(label);return state;}
 const project='/repos/local/ai-safety-ui-qa';
 const sequence=(api,id)=>api.getByRole('button',{name:`查看样本${id}详情`,exact:true});
-async function closeDetails(api,options){const close=api.getByRole('button',{name:'关闭样本详情',exact:true});if(await close.count()){await close.click();await observed(api,options,'close details');}}
+async function closeDetails(api,options){await api.waitHidden(api.locator('.dw-resultbar .spin'));const close=api.getByRole('button',{name:'关闭样本详情',exact:true});if(await close.count()){await close.click();await observed(api,options,'close details');}}
 
 /** Non-destructive: only display/filter preferences and a cancelled inline edit. */
 export async function tableScenario(api,options={}){
@@ -37,12 +37,12 @@ export async function tableScenario(api,options={}){
   const details=api.getByRole('dialog',{name:'样本详情',exact:true});ensure((await details.locator('header code').innerText()).trim()==='qa-1','qa-1 details selected');
   await sequence(api,'qa-2').click();await observed(api,options,'sequence qa-2 updates already-open details once');ensure((await details.locator('header code').innerText()).trim()==='qa-2','second sequence click directly switches details');
   const afterWidth=await table.evaluate(element=>element.getBoundingClientRect().width);ensure(afterWidth===geometry.tableWidth,'overlay does not shrink table');
-  const prompt=grid.getByRole('cell',{name:'Synthetic sample 1. This text is an inert UI fixture.',exact:true});
-  await prompt.click();await observed(api,options,'body click closes details without opening a row');ensure(await details.count()===0,'body click does not open details');
+  const firstRow=table.locator('tbody tr').filter({has:sequence(api,'qa-1')}),prompt=grid.getByRole('cell',{name:'Synthetic sample 1. This text is an inert UI fixture.',exact:true});
+  await firstRow.getByRole('cell',{name:'qa-1',exact:true}).click();await observed(api,options,'visible ID body cell closes details without opening a row');ensure(await details.count()===0,'body click does not open details');
   await prompt.dblclick();await observed(api,options,'double click opens inline text control');const editor=api.getByRole('textbox',{name:'编辑 prompt',exact:true});await api.waitVisible(editor);await editor.press('Escape');await observed(api,options,'Escape cancels unchanged inline control');ensure(await editor.count()===0,'inline control cancelled');
-  const firstRow=table.locator('tbody tr').filter({has:sequence(api,'qa-1')});const priority=firstRow.getByText('normal',{exact:true});
+  const priority=firstRow.getByText('normal',{exact:true});
   ensure(await priority.evaluate(element=>getComputedStyle(element).color)==='rgb(233, 174, 96)','configured priority option color used in grid');
-  const timeButton=api.getByRole('button',{name:'按最后修改时间排序',exact:true}),timeHeader=table.locator('th').filter({has:timeButton});
+  const timeButton=api.getByRole('button',{name:/^按最后修改时间排序；(?:未排序|当前升序|当前降序)$/}),timeHeader=table.locator('th').filter({has:timeButton});
   await timeButton.click();await observed(api,options,'last-modified ascending');await api.waitHidden(grid.locator('.dw-resultbar .spin'));ensure(await timeHeader.getAttribute('aria-sort')==='ascending','time ascending state');
   await timeButton.click();await observed(api,options,'last-modified descending');await api.waitHidden(grid.locator('.dw-resultbar .spin'));ensure(await timeHeader.getAttribute('aria-sort')==='descending','time descending state');
   await timeButton.click();await observed(api,options,'clear last-modified sorting');await api.waitHidden(grid.locator('.dw-resultbar .spin'));ensure(await timeHeader.getAttribute('aria-sort')==='none','sort reset');
@@ -93,7 +93,8 @@ export async function transferScenario(api,options={}){
   await dialog.getByLabel('提交说明',{exact:true}).fill('Browser synthetic JSONL append acceptance');await observed(api,options,'set import commit explanation');await dialog.getByRole('checkbox',{name:/确认在此分支生成一次导入提交/}).check();await observed(api,options,'explicitly confirm one import commit');
   await dialog.getByRole('button',{name:'确认导入并提交',exact:true}).click();await api.waitHidden(dialog);await api.waitVisible(sequence(api,'r10-browser-import-one'));await observed(api,options,'committed append appears as a real row');
   const afterText=await api.locator('.dw-header .dw-count').innerText(),after=Number(afterText.replace(/\D/g,''));ensure(after===before+2,'two rows added to complete dataset');
-  await api.getByRole('link',{name:'Releases',exact:true}).click();await api.waitVisible(api.getByRole('button',{name:'导出工作快照',exact:true}));await observed(api,options,'open version delivery page');await api.getByRole('button',{name:'导出工作快照',exact:true}).click();await observed(api,options,'queue fixed-commit working snapshot');
+  await api.getByRole('link',{name:'Releases',exact:true}).click();await api.waitVisible(api.getByRole('button',{name:'导出工作快照',exact:true}));await observed(api,options,'open version delivery page');await api.getByRole('button',{name:'导出工作快照',exact:true}).click();
+  const snapshot=api.getByRole('dialog',{name:'导出完整工作快照',exact:true});await api.waitVisible(snapshot);await snapshot.getByRole('checkbox',{name:'我已核对整份数据集的内容、导出字段与接收对象。',exact:true}).check();await observed(api,options,'confirm complete committed dataset snapshot scope');await snapshot.getByRole('button',{name:'生成工作快照',exact:true}).click();await api.waitHidden(snapshot);await observed(api,options,'queue fixed-commit working snapshot');
   const archive=api.locator('.release-assets a[download]').filter({hasText:/\.zip\b/i});await api.waitVisible(archive,60000);await observed(api,options,'snapshot has a real downloadable ZIP asset');
   const downloading=capturedEvent(api.waitForEvent('download',60000));await archive.click();await observed(api,options,'request snapshot download through browser');const download=eventValue(await downloading),downloadPath=await download.path();ensure(typeof downloadPath==='string'&&downloadPath.length>0,'browser download completed to a local file');
   return {scenario:'transfer',uploadedRows:2,totalRows:after,browserFileChooser:true,browserDownload:true,downloadPath};
