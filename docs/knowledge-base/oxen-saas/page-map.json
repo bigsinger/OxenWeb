@@ -8,7 +8,7 @@
     "approvedReview": "../../review-ux-r21.md",
     "userGuide": "../../user-guide.md",
     "implementation": "../../implementation-r22.md",
-    "implementationRecordStatus": "pending-main-task-summary",
+    "implementationRecordStatus": "completed",
     "implementationDetails": [
       "../../r22-release-ui.md",
       "../../r22-delete-outcomes.md",
@@ -45,6 +45,16 @@
         "passed": 12,
         "failed": 0,
         "localLog": ".data/r22-delete-transport-retry.log"
+      },
+      "cleanSourceCopy": {
+        "passed": true,
+        "checks": [
+          "npm ci",
+          "OpenAPI regeneration and generated contract byte comparison",
+          "typecheck",
+          "isolated build"
+        ],
+        "productionTouched": false
       }
     },
     "officialNativeAcceptance": {
@@ -56,8 +66,8 @@
       "receipt": ".data/r22-native-release-acceptance.json"
     },
     "browserAcceptance": {
-      "status": "partial-final-build-recheck-pending",
-      "syntheticOnly": true,
+      "status": "passed-final-qa-ci-and-production-readonly-smoke",
+      "syntheticOnly": false,
       "initialQaOrigin": "http://127.0.0.1:3013",
       "confirmed": [
         "Enter unchanged source returns focus to original prompt cell",
@@ -67,7 +77,11 @@
         "No-match state offers clear filters",
         "Successful candidate POST followed by GET503 retains returned ID and manual notes",
         "Read retry records one create, one build and zero canonical writes",
-        "Final publish confirmation can be cancelled without losing state"
+        "Final publish confirmation can be cancelled without losing state",
+        "Final same-ID DELETE success receipt remains confirmed through share-list GET503 with no unknown banner; read-only retry recovers",
+        "Sustained SettingsPanel GET503 retains navigation and failure panel; clear fault and Refresh page to retry restores General settings",
+        "First-time empty project offers Create first Release",
+        "390x844 release form empty version Tab accepts v0.1.0 while manual title is preserved; primary/secondary buttons remain reachable and cancellation asks about unsaved input"
       ],
       "deleteTransportRetry": {
         "observedUiFetches": 1,
@@ -80,17 +94,43 @@
         "requiresErrorCode": "OPERATION_ALREADY_SUCCEEDED",
         "requiresOperationState": "succeeded",
         "appliesTo": "DELETE only",
-        "finalBrowserRecheck": "pending"
+        "finalBrowserRecheck": "passed",
+        "finalVisibleResult": "Link revoked; share-list refresh failed separately; confirmed result retained",
+        "unknownBanners": 0,
+        "readOnlyRetryRecovered": true
       },
       "knownScreenshot": "../../evidence/r22/confirmed-save-readback-failure.png",
       "finalSafeQaPorts": [
         3015,
         3016
       ],
-      "finalSafeQaStatus": "pending"
+      "finalSafeQaStatus": "completed",
+      "passed": true,
+      "finalQaOrigin": "http://127.0.0.1:3016",
+      "remoteBrowserTestsPassed": 12,
+      "narrowViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "finalScreenshots": [
+        "../../evidence/r22/lazy-panel-recovery.png",
+        "../../evidence/r22/compact-release-form-narrow.png"
+      ],
+      "writeScenariosSyntheticOnly": true,
+      "evidenceSyntheticOnly": true,
+      "productionReadOnlySmoke": {
+        "passed": true,
+        "origin": "http://localhost:3001",
+        "page": "Existing project Releases",
+        "headingVisible": true,
+        "createActionEnabled": true,
+        "formOpened": false,
+        "writeRequests": 0,
+        "privateContentCaptured": false
+      }
     },
     "performance": {
-      "status": "initial-payload-measured-final-build-reprofile-pending",
+      "status": "final-payload-measured-no-reliable-wallclock-speedup-claim",
       "repositoryChunkBeforeBytes": 500946,
       "initialR22RepositoryChunkBytes": 81212,
       "overviewInitialJsBeforeBytes": 683208,
@@ -107,19 +147,82 @@
           "releases": 238
         }
       },
-      "caveat": "Warm measurements include tool overhead and use different ports/proxy paths; no reliable speedup claim."
+      "caveat": "Warm measurements include tool overhead and use different ports/proxy paths; no reliable speedup claim.",
+      "finalRepositoryChunkBytes": 81212,
+      "finalOverviewInitialJsBytes": 262285,
+      "overviewJsReductionPercent": 61.6
     },
     "remoteCiAcceptance": {
-      "status": "pending"
+      "status": "completed",
+      "conclusion": "success",
+      "runId": 42831759415,
+      "headSha": "7fc66c2b3aedf4dbf3175a799c580fdf065db9a3",
+      "branch": "codex/r22-usability",
+      "url": "https://github.com/bigsinger/OxenWeb/actions/runs/42831759415",
+      "unit": {
+        "total": 583,
+        "passed": 576,
+        "conditionalSkipped": 7,
+        "failed": 0
+      },
+      "nativeContract": {
+        "total": 7,
+        "passed": 7,
+        "skipped": 0,
+        "failed": 0
+      },
+      "browser": {
+        "total": 12,
+        "passed": 12,
+        "failed": 0
+      },
+      "artifactUrl": "https://github.com/bigsinger/OxenWeb/actions/runs/42831759415/artifacts/13771867690"
     },
     "deploymentAcceptance": {
-      "status": "pending",
-      "productionStoppedByQaRestart": false
+      "status": "completed",
+      "passed": true,
+      "completedAt": "2026-11-10T14:28:50Z",
+      "port": 3001,
+      "previousPid": 41100,
+      "pid": 50256,
+      "dualLeaseAuthorityControlRootPidAndListenerVerified": true,
+      "activeWritesBeforeSwap": 0,
+      "stagedBuildSwappedAndRestarted": true,
+      "serverBuildSha256": "3ceeb5b7b95e0158847862574ec0abcf752aea5abcade4aaa78aa605f5dbb1ab",
+      "webBuildSha256": "09dcf1cc9b2b45f4ed7aae9688713ba26c259060e485d51d887e587178b4830e",
+      "staticChecks": {
+        "indexStatus": 200,
+        "javaScriptAndCssStatus": 200,
+        "mimeMatches": true,
+        "bytesMatch": true
+      },
+      "health": {
+        "ready": true,
+        "acceptWrites": true,
+        "active": 0,
+        "pending": false
+      },
+      "oxenUpstreamPort": 3002,
+      "oxenUpstreamChanged": false,
+      "dataMigration": false,
+      "realSourcePreservation": {
+        "projects": 4,
+        "comparisonStages": [
+          "initial",
+          "predeploy",
+          "after"
+        ],
+        "mainCommitUnchanged": true,
+        "canonicalBytesAndSha256Unchanged": true,
+        "privateDraftSha256Unchanged": true
+      },
+      "productionStoppedByQaRestart": false,
+      "publicEvidenceSummary": "../../evidence/r22/verification.json"
     },
     "harnessLimitations": [
       "Old QA static refresh failed because wildcard:false prevents wildcard route discovery; harness issue, not product pass",
       "Old QA restart was rejected by automatic approval; no actual production stop",
-      "New immutable isolated QA will provide final fresh-build validation"
+      "Final immutable isolated QA3015/3016 completed the fresh-build validation; this does not change the earlier static-refresh or approval-block facts"
     ],
     "r11DownloadHandoff": "Superseded by the user's delete-all-old-publications requirement; browser download was not completed and is not marked passed. Historical approval-block records remain."
   },

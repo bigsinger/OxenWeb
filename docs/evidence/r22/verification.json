@@ -1,0 +1,108 @@
+{
+  "revision": "R22",
+  "date": "2026-11-10",
+  "timezone": "Asia/Shanghai",
+  "applicationVersion": "0.1.0",
+  "scope": "Approved UX01–UX11 refinements to existing dataset management only",
+  "sourceCommit": "7fc66c2b3aedf4dbf3175a799c580fdf065db9a3",
+  "githubActions": {
+    "url": "https://github.com/bigsinger/OxenWeb/actions/runs/42831759415",
+    "conclusion": "success",
+    "verify": { "total": 583, "passed": 576, "conditionalSkipped": 7, "failed": 0 },
+    "nativeContract": { "passed": 7, "skipped": 0, "failed": 0, "file": "settings-access.test.ts", "relationshipToFullSuiteSkips": "Enables the native settings/access condition; does not replace the other six skipped opt-in suites" },
+    "browser": { "passed": 12, "failed": 0, "existing": 5, "added": 7 }
+  },
+  "reproducibleBuild": {
+    "isolatedEngineeringCopy": true,
+    "engineeringFiles": 548,
+    "npmCi": "passed",
+    "generatedContractFilesByteIdentical": 4,
+    "build": "passed",
+    "strictTypecheck": "passed-after-test-type-correction",
+    "initialTypeFailurePreserved": true,
+    "lockUnchanged": true,
+    "productBuildInputsMatch": true
+  },
+  "officialLocalAcceptance": {
+    "version": "0.67.0",
+    "port": 3008,
+    "passed": true,
+    "testUpstreamStopped": true,
+    "twoVersionsAndAutomaticNotes": true,
+    "checksumsAndProjection": true,
+    "oldAssetsAndSharesRemoved": true,
+    "singleCurrentPublication": true,
+    "consumerAndInternalSnapshotPermissions": true
+  },
+  "localBrowser": {
+    "method": "CUA in-app browser; all write scenarios and saved evidence synthetic; production smoke read-only and recorded separately",
+    "finalImmutableEnvironment": "3015 BFF / 3016 proxy",
+    "assetMimeAndBytesVerifiedAtBoot": true,
+    "enterAndEscapeRestoreOriginalCell": true,
+    "invalidJsonRetainedUntilCancel": true,
+    "writeSuccessFollowedByRead503RetainsObject": true,
+    "readRetryDoesNotRepeatWrite": true,
+    "snapshotFilterAndFilteredEmpty": true,
+    "firstReleaseEmptyState": true,
+    "saveOnceBuildOnceAndFinalPublishCancel": true,
+    "deleteReplyLostThenDurableCompletionRecognized": true,
+    "deleteRefreshFailureShownSeparately": true,
+    "transportMayRetrySameDeleteId": true,
+    "journalPreventsRepeatedMutation": true,
+    "lazyImportFailureAndExplicitRefreshRecovery": true,
+    "narrowViewport": { "width": 390, "height": 844, "primaryAndSecondaryActionsReachable": true },
+    "emptyTabSuggestionAndExplicitTextPreserved": true,
+    "unsavedCloseConfirmation": true,
+    "nativeWindowsImeManuallyVerified": false,
+    "compositionCoveredByLogicAndRemoteDomKeyboardEvent": true,
+    "expectedInjectedConsoleErrorOnly": true,
+    "screenshots": [
+      "confirmed-save-readback-failure.png",
+      "lazy-panel-recovery.png",
+      "compact-release-form-narrow.png"
+    ]
+  },
+  "routeJavaScriptGraphBytes": {
+    "measurement": "Union of static ES import dependencies for entry, repository and active panel; not total bundle or transfer compression",
+    "repositoryChunk": { "before": 500946, "after": 81212 },
+    "overview": { "before": 683208, "after": 262285, "reductionPercent": 61.6 },
+    "table": { "before": 683208, "after": 430927 },
+    "releases": { "before": 683208, "after": 306841 },
+    "reliableWarmRuntimeSpeedupClaimed": false
+  },
+  "retainedFailuresAndLimits": [
+    "Initial isolated QA hot-swapped assets into an already started static server; new asset paths returned HTML. Replaced by a new immutable QA instance, not counted as product acceptance.",
+    "Automatic approval rejected stopping the old QA process without a detailed reason. The old process was not terminated using another mechanism.",
+    "A single injected table chunk 503 did not surface the failure panel, so it was not counted as error-state proof. Sustained failure on an unopened settings chunk did, and explicit refresh recovered.",
+    "Warm tool timings include automation overhead and different proxy conditions; no reliable runtime speed improvement is claimed.",
+    "Windows native IME candidate-window operation was not manually tested."
+  ],
+  "safety": {
+    "oxenKernelOrServerModified": false,
+    "fixedOpenApiModified": false,
+    "newBusinessFeatureAdded": false,
+    "realDatasetMembershipOrContentsModified": false,
+    "untrustedArchivesExecuted": false,
+    "credentialsOrSignedUrlsInEvidence": false,
+    "productionDeployment": "passed"
+  },
+  "productionDeployment": {
+    "completedAt": "2026-11-10T14:28:50.973Z",
+    "port": 3001,
+    "oldPid": 41100,
+    "newPid": 50256,
+    "leasePairAuthorityControlRootAndListenerVerified": true,
+    "drainedBeforeStopping": true,
+    "activeWritesAtStop": 0,
+    "oldBuildsMovedToLocalRollbackDirectory": true,
+    "serverSha256": "3ceeb5b7b95e0158847862574ec0abcf752aea5abcade4aaa78aa605f5dbb1ab",
+    "webSha256": "09dcf1cc9b2b45f4ed7aae9688713ba26c259060e485d51d887e587178b4830e",
+    "indexJsCssStatusMimeAndBytesVerified": true,
+    "health": { "ready": true, "acceptsWrites": true, "activeWrites": 0, "pendingReconciliation": false },
+    "fourRealProjectSourceAndPrivateDraftSummariesUnchanged": true,
+    "officialUpstream3002Untouched": true,
+    "datasetMarkerMigrationPurgeOperations": false,
+    "liveReleasesRouteReadOnlyBrowserCheck": "passed",
+    "realDatasetScreenshotsSaved": false
+  }
+}

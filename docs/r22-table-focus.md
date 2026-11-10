@@ -21,6 +21,7 @@
 |Web TypeScript `vue-tsc --noEmit`|通过，`.data/r22-table-focus-type.log`|
 |焦点身份/异步负测及既有网格、类型编辑、布局回归|35 项通过，0 失败，`.data/r22-table-focus-tests.log`|
 |行/列重排、原行/字段消失、项目/代次变化、其他控件/模态框拥有焦点|自动化 helper 回归通过|
-|渲染后的 Enter/Esc、校验失败、正文复制、序号详情、中文 IME、窄屏|主任务统一执行浏览器验收，本文暂不标为通过|
+|渲染后的 Enter/Esc、校验失败|合成CUA实测prompt Enter/Esc后原TD重新获焦，messages非法JSON留在编辑器；Esc取消后返回messages原TD。远端浏览器焦点回归通过|
+|正文复制、序号详情、窄屏与中文 IME边界|原有交互继续保留，远端390px及表格回归通过；未手动检验Windows原生输入法候选窗，不以组合事件测试替代原生IME验收|
 
-未执行默认 build，以免覆盖当前运行 dist；主任务会对隔离构建和浏览器进行统一检查。本项未浏览 SaaS、读取真实样本、执行 Skill 或改写真实数据。
+本子任务未执行默认 build，以免覆盖当时运行 dist；主任务已完成隔离生产构建、干净工程复现和浏览器统一检查，见 [R22主记录](implementation-r22.md)。本项未新增SaaS观察、读取真实样本正文、执行 Skill 或改写真实数据。

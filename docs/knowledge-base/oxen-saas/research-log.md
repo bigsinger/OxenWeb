@@ -2,18 +2,22 @@
 
 ## 2026-11-10：R22已批准交互的本地验证进展（非SaaS观察）
 
-来源：用户批准[UX01–UX11](../../review-ux-r21.md)；复用2026-11-08冻结11页，未重新浏览SaaS、检查托管前端或修改Oxen内核。角色为隔离合成项目的本机所有者，页面为本地数据编辑、Releases与工作区／访问控制；已运行的合成QA入口是`http://127.0.0.1:3013`（代理至3014），旧构建对照为3012。下列可见结果由主任务CUA实测报告，不把自动化逻辑检查写成网页观察。
+来源：用户批准[UX01–UX11](../../review-ux-r21.md)；复用2026-11-08冻结11页，未重新浏览SaaS、检查托管前端或修改Oxen内核。角色为隔离合成项目的本机所有者，页面为本地数据编辑、Releases与工作区／访问控制；早期QA入口为`http://127.0.0.1:3013`（代理至3014），旧构建对照3012；最终不可变构建由新隔离QA3015／3016验证。下列可见结果由主任务CUA实测报告，不把自动化逻辑检查写成网页观察。
 
 | 动作 | 已观察结果 | 实现映射／证据 |
 | --- | --- | --- |
 | 表格原值Enter、Esc及无效对象JSON | Enter焦点留在prompt单元格，Esc返回messages格；非法JSON继续留在编辑器，Esc才取消 | `DatasetWorkbench`／`dataset-cell-focus`；[焦点记录](../../r22-table-focus.md)，运行测量在本机忽略目录`.data/r22-browser-*.json` |
 | “当前发布”切换工作快照；搜索不存在版本 | ready快照可见；无匹配提供清除筛选 | `ReleasesPanel`／`release-requests`；[发布记录](../../r22-release-ui.md) |
 | 保存并校验成功后注入列表GET503，再只读重试；取消最终发布确认 | 固定候选ID与人工说明保留，1次创建、1次打包、0次源正文写入；最终取消未发布 | [已确认保存但读回失败截图](../../evidence/r22/confirmed-save-readback-failure.png)；`ReleasesPanel`／`release-requests` |
-| 撤销分享完成后断开HTTP响应 | 浏览器传输层在一次fetch内重发同操作ID，服务端日志阻止第二次实际撤销；暴露“已完成”与“未知”并列提示 | `api`／`operation-http`／`operation-journal`；[删除核对](../../r22-delete-outcomes.md)。严格匹配ID、代码和succeeded回执的修复已通过服务专项，最终新构建浏览器复验待完成 |
+| 早期撤销分享完成后断开HTTP响应 | 浏览器传输层在一次fetch内重发同操作ID，服务端日志阻止第二次实际撤销；暴露“已完成”与“未知”并列提示 | `api`／`operation-http`／`operation-journal`；[删除核对](../../r22-delete-outcomes.md)。保留发现事实，不把两个后端请求写成一个 |
+| 最终QA3016再次截断撤销响应，并让分享列表GET503 | 严格同ID／代码／succeeded回执后显示“链接已撤销，但列表刷新失败；当前保留已确认结果”，未知提示0；只读重试恢复 | `api`／`ReleasesPanel`；仅当前DELETE的匹配回执可确认，缺状态、错ID、POST仍不适用 |
+| 正式3001受控部署后进入既有项目Releases | 标题加载、创建入口可用；未打开表单、未写入、未截取真实内容 | 主任务CUA只读复核；部署就绪／静态资源与四真实库摘要证明独立记录，不代替合成故障测试 |
+| 持续阻断SettingsPanel模块GET503，清故障后点击“刷新页面重试” | 失败面板出现，项目导航保留；显式刷新恢复常规设置 | `RepositoryView`／`lazy-repository-panel`；[恢复截图](../../evidence/r22/lazy-panel-recovery.png) |
+| 进入空项目；390×844发布表单Tab填空值、保留人工标题并取消 | 真正空库显示尚未发布和创建第一个Release；Tab采用v0.1.0，人工标题不覆盖，主次按钮可达，取消触发未保存确认 | `ReleasesPanel`／`release-form-hints`；[窄屏截图](../../evidence/r22/compact-release-form-narrow.png) |
 
-自动验证：类型及隔离Web／服务端构建通过；全量583项为576通过、7条件跳过、0失败；DELETE专项12项通过；独立官方0.67.0／3008发布链路通过并已停止测试服务。精确日志分别在本机忽略目录`.data/r22-full-tests-release.log`、`.data/r22-delete-transport-retry.log`及`.data/r22-native-release-acceptance.json`，不含真实样本的公开汇总由主任务最终补齐。不得将远端CI、正式部署或整套最终浏览器验收写成通过。
+自动验证：类型、隔离Web／服务端构建及干净工程拷贝安装／契约生成比对／类型／构建通过；全量583项为576通过、7条件跳过、0失败；DELETE专项12项通过；独立官方0.67.0／3008发布链路通过并已停止测试服务。[候选7fc66c2的GitHub运行42831759415](https://github.com/bigsinger/OxenWeb/actions/runs/42831759415)全部成功，verify同组583项、原生权限7/7无跳过、浏览器12/12。浏览器产物为[synthetic-browser-regression](https://github.com/bigsinger/OxenWeb/actions/runs/42831759415/artifacts/13771867690)。本机日志仍在`.data/r22-full-tests-release.log`、`.data/r22-delete-transport-retry.log`及`.data/r22-native-release-acceptance.json`；正式3001已于2026-11-10 14:28:50Z受控部署通过：双租约的authority／控制根／PID与监听一致，写入排空为0后交换构建，重启就绪；index及JS／CSS均为200、MIME和字节一致。四真实库初始／部署前／后main提交、正文bytes／SHA及私有草稿SHA一致，Oxen3002未动且无数据迁移。
 
-测量边界：旧Repository块500,946字节／概览初载JS683,208字节，初步R22分别81,212／261,721字节；严格回执小修后的最终复测待补。旧／初步R22暖耗时中位数分别为概览240／219ms、数据编辑246／254ms、Releases240／238ms，含工具开销且直连／代理、端口不同，不能得出可靠提速结论。旧QA静态文件刷新因`wildcard:false`路由登记失败属于验收工具问题；旧进程重启曾被自动审批拒绝，未据此停止生产服务。将以新的不可变隔离QA3015／3016继续验证，尚不记成已完成。
+测量边界：旧Repository块500,946字节／概览初载JS683,208字节，初步R22分别81,212／261,721字节；最终构建复测为81,212／262,285字节，概览JS图减少61.6%。旧／初步R22暖耗时中位数分别为概览240／219ms、数据编辑246／254ms、Releases240／238ms，含工具开销且直连／代理、端口不同，不能得出可靠提速结论。旧QA静态文件刷新因`wildcard:false`路由登记失败属于验收工具问题；旧进程重启曾被自动审批拒绝，未据此停止生产服务。最终新不可变隔离QA3015／3016的复验结果列于上表，不改写旧工具／审批阻断事实。
 
 R21清理事实及原R11下载审批记录不被本轮覆盖；真实样本没有因本项自动重分组、改写或发布。以下历史观察保留原日期与结果。
 
